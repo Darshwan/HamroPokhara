@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Dependency directories
+/vendor/
+Gopkg.lock
+Gopkg.toml
+
+# Go build cache
+/bin/
+/obj/
+*.a
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE/editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment / secret files
+.env
+.env.local
+.env.*.local
