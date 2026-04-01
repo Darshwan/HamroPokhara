@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Mero Sahar",
+    "slug": "mero-sahar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#003b5a"
+    },
+    "android": {
+      "package": "np.gov.pokharamun.merosahar",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-barcode-scanner",
+      "expo-secure-store",
+      "expo-notifications"
+    ]
+  }
+}
