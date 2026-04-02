@@ -9,13 +9,16 @@ import {
   fetchOfficerNotices,
   fetchOfficerRequestPdfUrl,
   fetchQueue,
+  fetchWardInfo,
   loginOfficer,
   rejectRequest,
   relativeTime,
   runIntegrity,
   toDocumentLabel,
+  translateNotice,
   verifyDocument,
 } from "@/lib/portal-api";
+import LiveHlsPlayer from "@/components/live-hls-player";
 import type {
   DashboardStats,
   IntegrityResult,
@@ -43,6 +46,7 @@ const nav: Array<{ key: NavPage }> = [
 ];
 
 const noticeCategories = ["GENERAL", "URGENT", "INFRASTRUCTURE", "HEALTH", "WATER", "ELECTRICITY", "ROAD", "CULTURE", "TOURISM"] as const;
+const LIVE_HLS_STREAM_URL = process.env.NEXT_PUBLIC_HLS_STREAM_URL || "";
 
 const copy = {
   en: {
@@ -100,16 +104,20 @@ const copy = {
 } as const;
 
 export default function Home() {
-  const [token, setToken] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem("pratibimba_token") || "";
-  });
-  const [officer, setOfficer] = useState<Officer | null>(() => {
-    if (typeof window === "undefined") return null;
+  const [token, setToken] = useState("");
+  const [officer, setOfficer] = useState<Officer | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Hydrate auth state from localStorage after client mounts
+  useEffect(() => {
+    const savedToken = localStorage.getItem("pratibimba_token") || "";
     const savedOfficer = localStorage.getItem("pratibimba_officer");
-    if (!savedOfficer) return null;
-    return JSON.parse(savedOfficer) as Officer;
-  });
+    if (savedToken && savedOfficer) {
+      setToken(savedToken);
+      setOfficer(JSON.parse(savedOfficer) as Officer);
+    }
+    setIsHydrated(true);
+  }, []);
   const [page, setPage] = useState<NavPage>("dashboard");
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [queue, setQueue] = useState<QueueRequest[]>([]);
@@ -144,6 +152,9 @@ export default function Home() {
   const [recentPdfLoading, setRecentPdfLoading] = useState(false);
   const [recentPdfDtid, setRecentPdfDtid] = useState<string | null>(null);
   const [recentPdfFullscreen, setRecentPdfFullscreen] = useState(false);
+  const [wardInfo, setWardInfo] = useState<any>(null);
+  const [wardLoading, setWardLoading] = useState(false);
+  const [translateLoading, setTranslateLoading] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -216,12 +227,13 @@ export default function Home() {
   }, [selectedRequest]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !officer) return;
     const t = setTimeout(() => {
       void refreshData(token);
+      void loadWardInfo(officer.ward_code);
     }, 0);
     return () => clearTimeout(t);
-  }, [token, refreshData]);
+  }, [token, officer, refreshData]);
 
   async function handleLogin(formData: FormData) {
     const officerId = String(formData.get("officerId") || "").trim();
@@ -360,6 +372,12 @@ export default function Home() {
 
   async function handleViewRecentPdf(dtid: string) {
     setRecentPdfLoading(true);
+    const pdfWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!pdfWindow) {
+      setRecentPdfLoading(false);
+      setToast(lang === "np" ? "PDF खोल्न popup अनुमति दिनुहोस्।" : "Allow popups to open the PDF.");
+      return;
+    }
     try {
       const nextUrl = await fetchDocumentPdfUrlByDtid(dtid);
       setRecentPdfUrl((prev) => {
@@ -367,11 +385,59 @@ export default function Home() {
         return nextUrl;
       });
       setRecentPdfDtid(dtid);
-      setToast(lang === "np" ? "कागजात PDF लोड भयो।" : "Document PDF loaded.");
+      pdfWindow.location.replace(nextUrl);
+      setToast(lang === "np" ? "कागजात PDF खोलियो।" : "Document PDF opened.");
     } catch {
+      pdfWindow.close();
       setToast(lang === "np" ? "कागजात PDF लोड गर्न सकिएन।" : "Failed to load document PDF.");
     } finally {
       setRecentPdfLoading(false);
+    }
+  }
+
+  async function loadWardInfo(wardCode: string) {
+    setWardLoading(true);
+    try {
+      const info = await fetchWardInfo(wardCode);
+      setWardInfo(info);
+    } catch {
+      setToast("Failed to load ward info");
+    } finally {
+      setWardLoading(false);
+    }
+  }
+
+  async function handleTranslateTitle() {
+    if (!noticeForm.title.trim()) {
+      setToast(lang === "np" ? "शीर्षक दर्ज गर्नुहोस्।" : "Enter a title first.");
+      return;
+    }
+    setTranslateLoading(true);
+    try {
+      const result = await translateNotice(noticeForm.title, "en", "ne");
+      setNoticeForm((prev) => ({ ...prev, title_ne: result.translated }));
+      setToast(lang === "np" ? "शीर्षक अनुवाद भयо।" : "Title translated.");
+    } catch {
+      setToast(lang === "np" ? "अनुवाद असफल भयो।" : "Translation failed.");
+    } finally {
+      setTranslateLoading(false);
+    }
+  }
+
+  async function handleTranslateBody() {
+    if (!noticeForm.body.trim()) {
+      setToast(lang === "np" ? "सामग्री दर्ज गर्नुहोस्।" : "Enter content first.");
+      return;
+    }
+    setTranslateLoading(true);
+    try {
+      const result = await translateNotice(noticeForm.body, "en", "ne");
+      setNoticeForm((prev) => ({ ...prev, body_ne: result.translated }));
+      setToast(lang === "np" ? "सामग्री अनुवाद भयो।" : "Content translated.");
+    } catch {
+      setToast(lang === "np" ? "अनुवाद असफल भयो।" : "Translation failed.");
+    } finally {
+      setTranslateLoading(false);
     }
   }
 
@@ -399,6 +465,10 @@ export default function Home() {
     setVerifyResult(null);
     setIntegrityResult(null);
     setPage("dashboard");
+  }
+
+  if (!isHydrated) {
+    return null; // Prevent hydration mismatch by rendering nothing until client hydrates
   }
 
   if (!officer || !token) {
@@ -491,9 +561,28 @@ export default function Home() {
               <span className="np">{text.logout}</span>
             </button>
           </div>
+
+          {wardInfo && (
+            <div className="mt-6 rounded-xl border border-white/15 bg-white/10 p-3 text-xs">
+              <p className="font-semibold text-white">Ward Info</p>
+              <div className="mt-2 space-y-1 text-white/80">
+                <p>{wardInfo.office_name}</p>
+                <p className="truncate">📞 {wardInfo.office_phone}</p>
+                <p className="truncate">📧 {wardInfo.office_email}</p>
+                <p className="text-[11px]">Hours: {wardInfo.office_hours}</p>
+              </div>
+              {wardInfo.current_officer && (
+                <div className="mt-2 border-t border-white/20 pt-2">
+                  <p className="text-xs font-semibold text-white/90">Current Officer:</p>
+                  <p className="text-xs text-white/70">{wardInfo.current_officer.full_name}</p>
+                  <p className="text-xs text-white/60">{wardInfo.current_officer.phone}</p>
+                </div>
+              )}
+            </div>
+          )}
         </aside>
 
-        <section className="flex flex-1 flex-col">
+        <section className="flex flex-1 min-h-0 flex-col">
           {/* Top Navbar */}
           <div className="flex items-center justify-between border-b border-[var(--line)] bg-white px-5 py-3 lg:px-7">
             <div>
@@ -533,7 +622,7 @@ export default function Home() {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 overflow-y-auto p-5 lg:p-7">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 lg:p-7">
 
           {page === "dashboard" && (
             <div className="fade-up space-y-5">
@@ -542,6 +631,17 @@ export default function Home() {
                 <StatCard title="Pending Review" value={stats.pending_requests} note="Requests waiting for approval" color="amber" />
                 <StatCard title="Total Documents" value={stats.total_documents} note="In national ledger" color="mint" />
                 <StatCard title="Verifications" value={stats.verifications_today} note="Checked today" color="coral" />
+              </div>
+
+              <div className="rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-5">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-lg font-semibold">Live Waste Camera Feed</h3>
+                  <span className="rounded-full bg-[var(--mint-50)] px-2 py-1 text-xs font-semibold text-[var(--mint-800)]">HLS</span>
+                </div>
+                <p className="mb-4 text-sm text-[var(--ink-500)]">
+                  RTMP source should be converted to HLS and exposed as a public m3u8 URL.
+                </p>
+                <LiveHlsPlayer src={LIVE_HLS_STREAM_URL} />
               </div>
 
               <div className="rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-5">
@@ -621,8 +721,8 @@ export default function Home() {
           )}
 
           {page === "queue" && (
-            <div className="fade-up grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-4">
+            <div className="fade-up grid h-full min-h-0 grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="flex min-h-0 flex-col rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-4">
                 <div className="mb-3 flex flex-wrap gap-2">
                   {(["all", "PENDING", "UNDER_REVIEW"] as const).map((item) => (
                     <button
@@ -645,7 +745,7 @@ export default function Home() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {visibleQueue.length === 0 && (
                     <p className="rounded-xl bg-[var(--mint-50)] p-4 text-sm text-[var(--ink-500)]">
                       Queue is empty for the selected filter.
@@ -672,12 +772,12 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-5">
+              <div className="flex min-h-0 flex-col rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-5">
                 {!selectedRequest && (
                   <p className="text-sm text-[var(--ink-500)]">Select a request to review and decide.</p>
                 )}
                 {selectedRequest && (
-                  <div className="space-y-4">
+                  <div className="min-h-0 space-y-4 overflow-y-auto pr-1 xl:max-h-[calc(100vh-220px)]">
                     <div>
                       <h3 className="text-lg font-semibold">{toDocumentLabel(selectedRequest.document_type)}</h3>
                       <p className="text-xs text-[var(--ink-500)]">{selectedRequest.request_id}</p>
@@ -704,11 +804,11 @@ export default function Home() {
                       </p>
 
                       {previewPdfUrl && previewReadyForRequest === selectedRequest.request_id ? (
-                        <>
+                        <div className="space-y-3">
                           <iframe
                             src={previewPdfUrl}
                             title={`PDF preview ${selectedRequest.request_id}`}
-                            className="mt-3 h-[420px] w-full rounded-lg border border-[var(--line)] bg-white"
+                            className="h-[420px] w-full rounded-lg border border-[var(--line)] bg-white"
                           />
                           <label className="mt-3 flex items-start gap-2 text-sm text-[var(--ink-700)]">
                             <input
@@ -719,7 +819,7 @@ export default function Home() {
                             />
                             <span>I have reviewed this document</span>
                           </label>
-                        </>
+                        </div>
                       ) : (
                         <div className="mt-3 rounded-lg border border-dashed border-[var(--line)] bg-white p-4 text-xs text-[var(--ink-500)]">
                           PDF preview not loaded yet.
@@ -771,25 +871,45 @@ export default function Home() {
                   {text.noticesSub}
                 </p>
                 <div className="mt-4 space-y-3">
-                  <input
-                    value={noticeForm.title}
-                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, title: event.target.value }))}
-                    placeholder="Title (English)"
-                    className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={noticeForm.title}
+                      onChange={(event) => setNoticeForm((prev) => ({ ...prev, title: event.target.value }))}
+                      placeholder="Title (English)"
+                      className="flex-1 rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                    />
+                    <button
+                      onClick={() => void handleTranslateTitle()}
+                      disabled={translateLoading || !noticeForm.title.trim()}
+                      className="rounded-xl border border-[var(--line)] bg-[var(--mint-50)] px-3 py-2 text-xs font-semibold text-[var(--mint-800)] transition hover:bg-[var(--mint-100)] disabled:opacity-60"
+                      title="Auto-translate to Nepali"
+                    >
+                      {translateLoading ? "..." : "→ नेपाली"}
+                    </button>
+                  </div>
                   <input
                     value={noticeForm.title_ne}
                     onChange={(event) => setNoticeForm((prev) => ({ ...prev, title_ne: event.target.value }))}
                     placeholder="Title (Nepali, optional)"
                     className="np w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
                   />
-                  <textarea
-                    value={noticeForm.body}
-                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, body: event.target.value }))}
-                    rows={4}
-                    placeholder="Notice content (English)"
-                    className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
-                  />
+                  <div className="flex gap-2">
+                    <textarea
+                      value={noticeForm.body}
+                      onChange={(event) => setNoticeForm((prev) => ({ ...prev, body: event.target.value }))}
+                      rows={4}
+                      placeholder="Notice content (English)"
+                      className="flex-1 rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                    />
+                    <button
+                      onClick={() => void handleTranslateBody()}
+                      disabled={translateLoading || !noticeForm.body.trim()}
+                      className="rounded-xl border border-[var(--line)] bg-[var(--mint-50)] px-3 py-2 text-xs font-semibold text-[var(--mint-800)] transition hover:bg-[var(--mint-100)] disabled:opacity-60"
+                      title="Auto-translate to Nepali"
+                    >
+                      {translateLoading ? "..." : "→ नेपाली"}
+                    </button>
+                  </div>
                   <textarea
                     value={noticeForm.body_ne}
                     onChange={(event) => setNoticeForm((prev) => ({ ...prev, body_ne: event.target.value }))}

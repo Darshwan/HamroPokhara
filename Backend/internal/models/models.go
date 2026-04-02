@@ -166,6 +166,7 @@ type RequestStatusResponse struct {
 	UpdatedAt    string `json:"updated_at,omitempty"`
 	DTID         string `json:"dtid,omitempty"`
 	QRData       string `json:"qr_data,omitempty"`
+	QRCode       string `json:"qr_code,omitempty"`
 	Message      string `json:"message"`
 }
 
@@ -175,6 +176,7 @@ type ApproveResponse struct {
 	DTID         string `json:"dtid"`
 	DocumentHash string `json:"document_hash"`
 	QRData       string `json:"qr_data"`
+	QRCode       string `json:"qr_code,omitempty"`
 	Message      string `json:"message"`
 	IssuedAt     string `json:"issued_at"`
 }

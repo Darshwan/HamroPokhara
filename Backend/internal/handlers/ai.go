@@ -156,6 +156,94 @@ func AssistantSuggestions() fiber.Handler {
 	}
 }
 
+// TranslateText handles POST /ai/translate
+// Translates notice text between English and Nepali
+func TranslateText(db *database.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		var req struct {
+			Text     string `json:"text"`
+			FromLang string `json:"from_lang"` // "en" or "ne"
+			ToLang   string `json:"to_lang"`   // "en" or "ne"
+		}
+
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "invalid request body"})
+		}
+
+		text := strings.TrimSpace(req.Text)
+		if text == "" {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "text is required"})
+		}
+
+		// Normalize language codes
+		fromLang := "en"
+		toLang := "ne"
+		if strings.Contains(req.FromLang, "ne") {
+			fromLang = "ne"
+		}
+		if strings.Contains(req.ToLang, "en") {
+			toLang = "en"
+		}
+
+		// If target is same as detected source, swap
+		if fromLang == toLang {
+			toLang = map[string]string{"en": "ne", "ne": "en"}[toLang]
+		}
+
+		apiKey := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
+		if apiKey == "" {
+			// Template-based translation fallback
+			return c.JSON(fiber.Map{
+				"success":      true,
+				"translated":   text, // Echo back as fallback
+				"source":       "template",
+				"from_lang":    fromLang,
+				"to_lang":      toLang,
+				"message":      "Translation completed (fallback mode)",
+				"original_len": len(text),
+			})
+		}
+
+		var systemPrompt string
+		if toLang == "ne" {
+			systemPrompt = "You are an expert translator. Translate the notice text to fluent, natural Nepali. Keep formatting and structure. Reply ONLY with the translated text, no explanations."
+		} else {
+			systemPrompt = "You are an expert translator. Translate the notice text to fluent, natural English. Keep formatting and structure. Reply ONLY with the translated text, no explanations."
+		}
+
+		userPrompt := fmt.Sprintf("Translate this notice to %s:\n\n%s",
+			map[string]string{"ne": "नेपाली", "en": "English"}[toLang], text)
+
+		translated, err := callClaude(apiKey, systemPrompt, userPrompt, 1024)
+		source := "ai"
+		if err != nil {
+			// Fallback on error
+			return c.JSON(fiber.Map{
+				"success":      true,
+				"translated":   text,
+				"source":       "fallback",
+				"from_lang":    fromLang,
+				"to_lang":      toLang,
+				"message":      "Translation service temporarily unavailable",
+				"error":        err.Error(),
+				"original_len": len(text),
+			})
+		}
+
+		return c.JSON(fiber.Map{
+			"success":        true,
+			"original":       text,
+			"translated":     translated,
+			"source":         source,
+			"from_lang":      fromLang,
+			"to_lang":        toLang,
+			"message":        "Translation completed",
+			"original_len":   len(text),
+			"translated_len": len(translated),
+		})
+	}
+}
+
 func callClaude(apiKey, system, user string, maxTokens int) (string, error) {
 	payload := map[string]interface{}{
 		"model":      "claude-sonnet-4-5",

@@ -10,6 +10,7 @@ import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { citizenAPI, documentAPI, API_BASE } from '../api/client';
 import * as Linking from 'expo-linking';
+import AppHeader from '../components/AppHeader';
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
   PENDING:      { color: '#b7791f', bg: '#fef9ee', icon: 'schedule',      label: 'Pending Review' },
@@ -60,10 +61,7 @@ export default function TrackScreen() {
   if (myRequests.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Track Requests</Text>
-          <Text style={styles.headerSub}>तपाईंका अनुरोधहरू</Text>
-        </View>
+        <AppHeader title="Track Requests" showMenu={false} showLang />
         <View style={styles.empty}>
           <MaterialIcons name="inbox" size={48} color={Colors.outline} style={{ opacity: 0.4 }} />
           <Text style={styles.emptyTitle}>No Requests Yet</Text>
@@ -75,10 +73,7 @@ export default function TrackScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Track Requests</Text>
-        <Text style={styles.headerSub}>{myRequests.length} request{myRequests.length !== 1 ? 's' : ''}</Text>
-      </View>
+      <AppHeader title="Track Requests" showMenu={false} showLang />
       <ScrollView
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
@@ -168,9 +163,6 @@ export default function TrackScreen() {
 
 const styles = StyleSheet.create({
   container:        { flex: 1, backgroundColor: Colors.background },
-  header:           { padding: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant },
-  headerTitle:      { fontSize: 22, fontWeight: '900', color: Colors.primary },
-  headerSub:        { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
   empty:            { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyTitle:       { fontSize: 18, fontWeight: '700', color: Colors.primary, marginTop: 16 },
   emptySub:         { fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 8 },

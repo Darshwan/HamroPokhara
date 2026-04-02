@@ -289,6 +289,32 @@ export const weatherAPI = {
       return { success: false, message: 'Unable to fetch weather data' };
     }
   },
+
+  getPokharaFiveDayForecast: async () => {
+    const lat = 28.2096;
+    const lon = 83.9856;
+    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto`;
+
+    try {
+      const response = await withTimeout(forecastUrl, { method: 'GET' });
+      if (!response.ok) {
+        return { success: false, message: 'Unable to fetch forecast data' };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        forecast: {
+          dates: data?.daily?.time || [],
+          weatherCodes: data?.daily?.weather_code || [],
+          maxTemps: data?.daily?.temperature_2m_max || [],
+          minTemps: data?.daily?.temperature_2m_min || [],
+        },
+      };
+    } catch {
+      return { success: false, message: 'Unable to fetch forecast data' };
+    }
+  },
 };
 
 // ── AI ASSISTANT API ─────────────────────────────────────────
@@ -305,7 +331,7 @@ export const aiAPI = {
     query: string;
     language: 'ne' | 'en';
     answer?: string;
-    source?: 'claude' | 'template' | 'offline';
+    source?: 'claude' | 'gemini' | 'template' | 'offline';
     context?: string;
     user_id?: string;
   }) => api.post('/ai_chat_log', payload),

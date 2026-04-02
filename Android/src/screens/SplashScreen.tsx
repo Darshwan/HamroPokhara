@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius } from '../constants/theme';
 import { useStore } from '../store/useStore';
+import AppHeader from '../components/AppHeader';
 
 const { width, height } = Dimensions.get('window');
 const POKHARA_LAT = 28.2096;
@@ -88,15 +89,7 @@ export default function SplashScreen({ navigation }: any) {
         />
       </View>
 
-      {/* Top Header */}
-      <View style={styles.topHeader}>
-        <View style={styles.municipalBadge}>
-          <Text style={styles.municipalText}>Municipal Excellence</Text>
-        </View>
-        <TouchableOpacity style={styles.langIcon} activeOpacity={0.85} onPress={() => setShowLanguageSheet(true)}>
-          <MaterialIcons name="language" size={22} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <AppHeader title="Hamro Pokhara" showMenu={false} showNotif={false} showBack={false} showLang onLang={() => setShowLanguageSheet(true)} transparent />
 
       {/* Main Content */}
       <View style={styles.content}>
@@ -178,27 +171,6 @@ export default function SplashScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#003b5a' },
   bgContainer: { ...StyleSheet.absoluteFillObject },
-  topHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', paddingHorizontal: 24,
-    paddingTop: 56, paddingBottom: 16,
-  },
-  municipalBadge: {
-    backgroundColor: 'rgba(0,59,90,0.3)',
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: Radius.full,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-  },
-  municipalText: {
-    color: '#fff', fontSize: 10, fontWeight: '700',
-    letterSpacing: 1.5, textTransform: 'uppercase',
-  },
-  langIcon: {
-    width: 44, height: 44, borderRadius: Radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-  },
   content: {
     flex: 1, paddingHorizontal: 24,
     justifyContent: 'flex-end', paddingBottom: 32,

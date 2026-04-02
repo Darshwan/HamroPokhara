@@ -6,6 +6,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Typography } from '../constants/theme';
+import { useStore } from '../store/useStore';
 
 interface Props {
   title?:       string;
@@ -37,6 +38,8 @@ export default function AppHeader({
   transparent = false,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { language, setLanguage } = useStore();
+  const handleLangPress = onLang || (() => setLanguage(language === 'ne' ? 'en' : 'ne'));
 
   return (
     <View
@@ -68,7 +71,7 @@ export default function AppHeader({
         {/* Right side */}
         <View style={h.right}>
           {showLang && (
-            <TouchableOpacity style={h.iconBtn} onPress={onLang}>
+            <TouchableOpacity style={h.iconBtn} onPress={handleLangPress}>
               <MaterialIcons name="language" size={20} color={Colors.primary} />
             </TouchableOpacity>
           )}

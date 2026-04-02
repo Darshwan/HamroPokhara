@@ -6,6 +6,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
+import AppHeader from '../components/AppHeader';
 
 const LANGUAGES = [
   { code: 'ne', native: 'नेपाली',   label: 'Nepali'   },
@@ -33,14 +34,7 @@ export default function LanguageScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-          <MaterialIcons name="close" size={22} color={Colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Hamro Pokhara</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <AppHeader title="Hamro Pokhara" showMenu={false} showLang showBack onBack={() => navigation.goBack()} />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -95,20 +89,6 @@ export default function LanguageScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: 'rgba(247,250,249,0.9)',
-    borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant,
-  },
-  closeBtn: {
-    width: 38, height: 38, borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceContainerHigh,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18, fontWeight: '800', color: Colors.primary, letterSpacing: -0.3,
-  },
   scrollContent: { padding: 20, paddingBottom: 120 },
   titleSection: { marginBottom: 24 },
   title: { fontSize: 32, fontWeight: '900', color: Colors.primary, letterSpacing: -0.8 },

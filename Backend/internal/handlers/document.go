@@ -57,6 +57,7 @@ func PreviewDocumentPDF(db *database.DB) fiber.Handler {
 		}
 
 		if err := c.BodyParser(&req); err != nil {
+			log.Printf("[PDF] Preview body parse failed: %v", err)
 			return c.Status(400).JSON(fiber.Map{
 				"success": false,
 				"message": "Invalid request body",
@@ -92,6 +93,9 @@ func PreviewDocumentPDF(db *database.DB) fiber.Handler {
 				"message": "Ward code is required",
 			})
 		}
+
+		req.DocumentType = normalizeSifarisDocumentType(req.DocumentType)
+		log.Printf("[PDF] Preview request received doc_type=%s ward=%s citizen=%s purpose_len=%d return_base64=%v", req.DocumentType, req.WardCode, req.CitizenNID, len(req.Purpose), req.ReturnBase64)
 
 		// Fetch ward office details from database
 		ctx := context.Background()
@@ -197,6 +201,15 @@ func PreviewDocumentPDF(db *database.DB) fiber.Handler {
 			c.Set("X-PDF-Saved-Path", savedPath)
 		}
 		return c.Send(pdfResult.Bytes)
+	}
+}
+
+func normalizeSifarisDocumentType(raw string) string {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "", "SIFARIS", "SIFARIS_LETTER", "SIFARIS_PDF", "CITIZENSHIP_LETTER", "RECOMMENDATION", "RECOMMENDATION_LETTER":
+		return "SIFARIS"
+	default:
+		return strings.ToUpper(strings.TrimSpace(raw))
 	}
 }
 

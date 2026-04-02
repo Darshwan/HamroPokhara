@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -16,9 +17,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Radius, Shadow, Typography } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { aiAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
+import { askGeminiGovernmentAssistant } from '../utils/geminiAssistant';
 
 type LanguageMode = 'ne' | 'en';
-type AssistantSource = 'claude' | 'template' | 'offline';
+type AssistantSource = 'gemini' | 'template' | 'offline';
 
 interface ChatMessage {
   id: string;
@@ -92,8 +95,6 @@ const TEMPLATE_RESPONSES: Record<string, { ne: string; en: string }> = {
   },
 };
 
-const languageLabel = (lang: LanguageMode) => (lang === 'ne' ? 'नेपाली' : 'English');
-
 const normalizeText = (text: string) => text.toLowerCase().trim();
 
 const detectTemplateKey = (query: string): keyof typeof TEMPLATE_RESPONSES | 'fallback' => {
@@ -129,14 +130,15 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
       role: 'assistant',
       text:
         language === 'ne'
-          ? 'नमस्ते। म सरकारी सहायक हुँ। भवन अनुमति, नागरिकता, सिफारिस, कर, र पर्यटक सेवाबारे सोध्नुस्।'
-          : 'Hello. I am your Government Assistant. Ask me about building permits, citizenship, sifaris, tax, or tourist services.',
-      source: 'claude',
+          ? 'नमस्ते। म पोखरा महानगरपालिकाको सरकारी सहायक हुँ। कृपया आफ्नो प्रश्न सोध्नुहोस्, म अत्यन्त औपचारिक रूपमा सहयोग गर्नेछु।'
+          : 'Greetings. I am the official Government Assistant of Pokhara Metropolitan City. Please ask your question, and I will respond in a highly formal manner.',
+      source: 'gemini',
     },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [selectedLang, setSelectedLang] = useState<LanguageMode>(language as LanguageMode);
+  const chatScrollRef = useRef<ScrollView | null>(null);
 
   const userContext = useMemo(() => {
     if (isTourist && tourist) {
@@ -149,8 +151,15 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
   }, [citizen, isTourist, tourist]);
 
   const assistantIntro = selectedLang === 'ne'
-    ? 'तपाईंलाई कुन सरकारी सेवा चाहिन्छ? तलका quick suggestions प्रयोग गर्न सक्नुहुन्छ।'
-    : 'What government service do you need? Use the quick suggestions below to get started.';
+    ? 'कुनै पनि सरकारी सेवा सम्बन्धी प्रश्न सोध्नुहोस्। उत्तर अत्यन्त औपचारिक र स्पष्ट रूपमा प्रदान गरिनेछ।'
+    : 'Ask any government-service question. Responses are provided in a highly formal and clear format.';
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      chatScrollRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [messages, sending]);
 
   const syncLanguage = (lang: LanguageMode) => {
     setSelectedLang(lang);
@@ -197,25 +206,30 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
     setSending(true);
 
     try {
-      const response = await aiAPI.askGovernmentAssistant({
+      const response = await askGeminiGovernmentAssistant({
         query: trimmed,
         language: selectedLang,
         context: userContext,
-        citizen_nid: citizen?.nid,
-        tourist_passport: tourist?.passport_no,
       });
 
-      const apiAnswer = String(
-        response?.answer ||
-          response?.message ||
-          response?.response ||
-          response?.data?.answer ||
-          ''
-      ).trim();
+      if (response.missingKey) {
+        const keyName = 'EXPO_PUBLIC_GEMINI_API_KEY';
+        Toast.show({
+          type: 'info',
+          text1:
+            selectedLang === 'ne'
+              ? `.env मा ${keyName} थप्नुहोस्` 
+              : `Add ${keyName} to .env`,
+          text2:
+            selectedLang === 'ne'
+              ? 'हालका लागि template उत्तर देखाइँदैछ।'
+              : 'Template fallback is shown for now.',
+        });
+      }
 
-      const source: AssistantSource = response?.source === 'claude' ? 'claude' : response?.source === 'template' ? 'template' : 'claude';
+      const apiAnswer = String(response.answer || '').trim();
       const answer = apiAnswer || buildTemplateAnswer(trimmed, selectedLang);
-      const resolvedSource: AssistantSource = apiAnswer ? source : 'template';
+      const resolvedSource: AssistantSource = apiAnswer ? 'gemini' : 'template';
 
       setMessages((current) => [
         ...current,
@@ -248,67 +262,82 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
   const quickPromptLabel = (item: (typeof QUICK_SUGGESTIONS)[number]) => (selectedLang === 'ne' ? item.ne : item.en);
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={[Colors.primary, Colors.primaryContainer]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.header}
-      >
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.kicker}>{selectedLang === 'ne' ? 'एआई सरकारी सहायक' : 'AI Government Assistant'}</Text>
-            <Text style={styles.title}>{selectedLang === 'ne' ? 'नगर सेवाका लागि छिटो सहयोग' : 'Fast help for municipal services'}</Text>
-          </View>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <MaterialIcons name="close" size={20} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.subtitle}>{assistantIntro}</Text>
-
-        <View style={styles.langRow}>
-          <TouchableOpacity
-            style={[styles.langPill, selectedLang === 'ne' && styles.langPillActive]}
-            onPress={() => syncLanguage('ne')}
-          >
-            <Text style={[styles.langPillText, selectedLang === 'ne' && styles.langPillTextActive]}>नेपाली</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.langPill, selectedLang === 'en' && styles.langPillActive]}
-            onPress={() => syncLanguage('en')}
-          >
-            <Text style={[styles.langPillText, selectedLang === 'en' && styles.langPillTextActive]}>English</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
-      <View style={styles.quickWrap}>
-        <Text style={styles.sectionTitle}>{selectedLang === 'ne' ? 'Quick Suggestions' : 'Quick Suggestions'}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
-          {QUICK_SUGGESTIONS.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={styles.quickChip}
-              onPress={() => sendToAssistant(quickPromptLabel(item))}
-              disabled={sending}
-            >
-              <MaterialIcons name="help-outline" size={16} color={Colors.primary} />
-              <Text style={styles.quickChipText}>{quickPromptLabel(item)}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <AppHeader
+        title={selectedLang === 'ne' ? 'AI सहायक' : 'AI Assistant'}
+        showBack
+        showLang
+        showMenu={false}
+        onBack={() => navigation.goBack()}
+        onLang={() => syncLanguage(selectedLang === 'ne' ? 'en' : 'ne')}
+      />
 
       <KeyboardAvoidingView
         style={styles.chatShell}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
-          style={styles.chatList}
-          contentContainerStyle={styles.chatListContent}
-          showsVerticalScrollIndicator={false}
+        <LinearGradient
+          colors={[Colors.primary, Colors.primaryContainer]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.header}
         >
+          <View style={styles.headerTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kicker}>{selectedLang === 'ne' ? 'औपचारिक सरकारी मार्गदर्शन' : 'Formal Government Guidance'}</Text>
+              <Text style={styles.title}>{selectedLang === 'ne' ? 'सरकारी सहायक' : 'Government Assistant'}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.clearBtn}
+              onPress={() => setMessages((current) => current.slice(0, 1))}
+              disabled={sending || messages.length <= 1}
+            >
+              <MaterialIcons name="delete-outline" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.subtitle}>{assistantIntro}</Text>
+
+          <View style={styles.langRow}>
+            <TouchableOpacity
+              style={[styles.langPill, selectedLang === 'ne' && styles.langPillActive]}
+              onPress={() => syncLanguage('ne')}
+            >
+              <Text style={[styles.langPillText, selectedLang === 'ne' && styles.langPillTextActive]}>नेपाली</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langPill, selectedLang === 'en' && styles.langPillActive]}
+              onPress={() => syncLanguage('en')}
+            >
+              <Text style={[styles.langPillText, selectedLang === 'en' && styles.langPillTextActive]}>English</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.quickWrap}>
+          <Text style={styles.sectionTitle}>{selectedLang === 'ne' ? 'छिटो सुझाव' : 'Quick Suggestions'}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
+            {QUICK_SUGGESTIONS.map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.quickChip}
+                onPress={() => sendToAssistant(quickPromptLabel(item))}
+                disabled={sending}
+              >
+                <MaterialIcons name="help-outline" size={16} color={Colors.primary} />
+                <Text style={styles.quickChipText}>{quickPromptLabel(item)}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.chatCard}>
+          <ScrollView
+            ref={chatScrollRef}
+            style={styles.chatList}
+            contentContainerStyle={styles.chatListContent}
+            showsVerticalScrollIndicator={false}
+          >
           {messages.map((message) => (
             <View
               key={message.id}
@@ -331,8 +360,8 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
                 <Text style={[styles.bubbleText, message.role === 'user' && styles.userBubbleText]}>{message.text}</Text>
                 {message.source && message.role === 'assistant' && (
                   <Text style={styles.sourceText}>
-                    {message.source === 'claude'
-                      ? 'Claude Sonnet'
+                    {message.source === 'gemini'
+                      ? (selectedLang === 'ne' ? 'Gemini प्रत्यक्ष' : 'Gemini Live')
                       : message.source === 'template'
                         ? (selectedLang === 'ne' ? 'Template उत्तर' : 'Template answer')
                         : (selectedLang === 'ne' ? 'Offline fallback' : 'Offline fallback')}
@@ -353,34 +382,35 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
               </View>
             </View>
           )}
-        </ScrollView>
+          </ScrollView>
 
-        <View style={styles.composer}>
-          <View style={styles.inputCard}>
-            <TextInput
-              style={styles.input}
-              placeholder={selectedLang === 'ne' ? 'यहाँ प्रश्न लेख्नुहोस्...' : 'Type your question here...'}
-              placeholderTextColor={Colors.outline}
-              value={input}
-              onChangeText={setInput}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
-              onPress={() => sendToAssistant(input)}
-              disabled={sending || !input.trim()}
-            >
-              <MaterialIcons name="send" size={18} color="#fff" />
-            </TouchableOpacity>
+          <View style={styles.composer}>
+            <View style={styles.inputCard}>
+              <TextInput
+                style={styles.input}
+                placeholder={selectedLang === 'ne' ? 'यहाँ प्रश्न लेख्नुहोस्...' : 'Type your question here...'}
+                placeholderTextColor={Colors.outline}
+                value={input}
+                onChangeText={setInput}
+                multiline
+              />
+              <TouchableOpacity
+                style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+                onPress={() => sendToAssistant(input)}
+                disabled={sending || !input.trim()}
+              >
+                <MaterialIcons name="send" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.helperText}>
+              {selectedLang === 'ne'
+                ? 'Gemini उपलब्ध नभए template उत्तर देखाइनेछ।'
+                : 'If Gemini is unavailable, a template answer will be shown.'}
+            </Text>
           </View>
-          <Text style={styles.helperText}>
-            {selectedLang === 'ne'
-              ? 'Claude backend उपलब्ध नभए template उत्तर देखाइनेछ।'
-              : 'If the Claude backend is unavailable, a template answer will be shown.'}
-          </Text>
         </View>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -390,50 +420,51 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    ...Shadow.md,
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    ...Shadow.sm,
   },
   headerTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
   kicker: {
-    color: 'rgba(203,230,255,0.9)',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
   title: {
-    ...Typography.h2,
+    ...Typography.h3,
     color: '#fff',
-    marginTop: 6,
+    marginTop: 4,
   },
   subtitle: {
     color: 'rgba(255,255,255,0.88)',
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 18,
     marginTop: 8,
-    maxWidth: 320,
   },
-  backBtn: {
+  clearBtn: {
     width: 38,
     height: 38,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
   },
   langRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 16,
+    marginTop: 12,
   },
   langPill: {
     paddingHorizontal: 14,
@@ -455,8 +486,8 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   quickWrap: {
-    paddingTop: 16,
-    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingHorizontal: 16,
   },
   sectionTitle: {
     fontSize: 13,
@@ -486,13 +517,25 @@ const styles = StyleSheet.create({
   },
   chatShell: {
     flex: 1,
-    paddingTop: 8,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  chatCard: {
+    flex: 1,
+    marginHorizontal: 16,
+    marginTop: 8,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    overflow: 'hidden',
   },
   chatList: {
     flex: 1,
   },
   chatListContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
+    paddingTop: 14,
     paddingBottom: 18,
     gap: 10,
   },
@@ -516,7 +559,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bubble: {
-    maxWidth: '82%',
+    maxWidth: '86%',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -538,10 +581,10 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   sourceText: {
-    marginTop: 8,
+    marginTop: 7,
     fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
     color: Colors.outline,
     textTransform: 'uppercase',
   },
@@ -556,9 +599,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   composer: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    paddingTop: 4,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: Colors.outlineVariant,
+    backgroundColor: Colors.surfaceContainerLowest,
   },
   inputCard: {
     flexDirection: 'row',

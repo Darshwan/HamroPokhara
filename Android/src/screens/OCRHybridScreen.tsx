@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { authAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 type ScanDocType = 'nid' | 'citizenship' | 'license' | 'passport';
 
@@ -261,15 +262,7 @@ export default function OCRHybridScreen({
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.iconBtn} activeOpacity={0.8}>
-          <MaterialIcons name="arrow-back" size={20} color={Colors.primary} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerSub}>Photo first. Then correct the details before continuing.</Text>
-        </View>
-      </View>
+      <AppHeader title={title} showMenu={false} showLang showBack onBack={onClose} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {!photoUri ? (
@@ -387,26 +380,6 @@ export default function OCRHybridScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.outlineVariant,
-    backgroundColor: Colors.background,
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceContainerLow,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary },
-  headerSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
   scrollContent: { padding: 16, paddingBottom: 28, gap: 14 },
   captureCard: {
     backgroundColor: '#fff',

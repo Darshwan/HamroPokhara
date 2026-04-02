@@ -9,6 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius } from '../constants/theme';
 import { authAPI } from '../api/client';
 import { useStore } from '../store/useStore';
+import AppHeader from '../components/AppHeader';
 
 const { height } = Dimensions.get('window');
 
@@ -49,6 +50,7 @@ export default function ContinueAsScreen({ navigation }: any) {
   return (
     <SafeAreaView style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8faf9" />
+      <AppHeader title="Hamro Pokhara" showMenu={false} showLang />
 
       {/* ── LOGO ROW ─────────────────────────────────────────── */}
       <View style={s.logoRow}>

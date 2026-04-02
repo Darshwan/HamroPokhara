@@ -249,7 +249,11 @@ func ApproveRequest(db *database.DB, broker *sse.Broker) fiber.Handler {
 			"issued_at":     issuedAt,
 		})
 
-		qrData := fmt.Sprintf("https://verify.pratibimba.gov.np/%s", dtid)
+		qrData := verificationURLForDTID(dtid)
+		qrCode, qrErr := verificationQRCodeDataURL(qrData)
+		if qrErr != nil {
+			log.Printf("QR generation warning for %s: %v", dtid, qrErr)
+		}
 
 		log.Printf("✅ Approved: %s → DTID: %s by %s", sr.RequestID, dtid, officerID)
 
@@ -259,6 +263,7 @@ func ApproveRequest(db *database.DB, broker *sse.Broker) fiber.Handler {
 			DTID:         dtid,
 			DocumentHash: documentHash,
 			QRData:       qrData,
+			QRCode:       qrCode,
 			Message:      "Document approved and registered in National Ledger",
 			IssuedAt:     issuedAt.Format(time.RFC3339),
 		})

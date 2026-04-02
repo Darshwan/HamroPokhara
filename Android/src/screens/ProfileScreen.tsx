@@ -2,22 +2,26 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, SafeAreaView, Alert, ActivityIndicator,
-  Switch,
+  Switch, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { citizenAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 export default function ProfileScreen({ navigation }: any) {
   const { citizen, tourist, isTourist, logout, myRequests, language, setLanguage } = useStore();
+  const isNepali = language === 'ne';
+  const t = (en: string, ne: string) => (isNepali ? ne : en);
 
   const [profile, setProfile] = useState<any>(null);
   const [documents, setDocuments] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [notificationsOn, setNotificationsOn] = useState(true);
+  const [showMenu, setShowMenu] = useState(false);
 
   const touristRequests = myRequests.filter((req) => req.category === 'tourist');
   const citizenRequests = myRequests.filter((req) => req.category !== 'tourist');
@@ -81,6 +85,22 @@ export default function ProfileScreen({ navigation }: any) {
     ]);
   };
 
+  const handleHeaderLanguageToggle = () => {
+    setLanguage(language === 'ne' ? 'en' : 'ne');
+  };
+
+  const localizedMenuItems = [
+    { icon: 'home', label: t('Home', 'गृहपृष्ठ'), action: () => navigation.navigate('Home') },
+    { icon: 'apps', label: t('Services', 'सेवाहरू'), action: () => navigation.navigate('Request') },
+    { icon: 'timeline', label: t('Tracker', 'ट्र्याकर'), action: () => navigation.navigate('Track') },
+  ];
+
+  const menuItems = [
+    { icon: 'home', label: 'Home', action: () => navigation.navigate('Home') },
+    { icon: 'apps', label: 'Services', action: () => navigation.navigate('Request') },
+    { icon: 'timeline', label: 'Tracker', action: () => navigation.navigate('Track') },
+  ];
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -93,6 +113,21 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <AppHeader
+        title={t('Hamro Pokhara', 'हाम्रो पोखरा')}
+        showMenu
+        showNotif
+        showLang
+        leftContent={(
+          <View style={styles.headerLogo}>
+            <MaterialIcons name="location-city" size={18} color={Colors.primary} />
+          </View>
+        )}
+        onMenu={() => setShowMenu(true)}
+        onLang={handleHeaderLanguageToggle}
+        onNotif={() => Alert.alert('Notifications', 'No new notifications')}
+      />
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {isTourist ? (
           <>
@@ -105,7 +140,7 @@ export default function ProfileScreen({ navigation }: any) {
               <View style={styles.touristTopRow}>
                 <View style={styles.touristBadge}>
                   <MaterialIcons name="flight-takeoff" size={14} color={Colors.primary} />
-                  <Text style={styles.touristBadgeText}>Tourist Profile</Text>
+                  <Text style={styles.touristBadgeText}>{t('Tourist Profile', 'पर्यटक प्रोफाइल')}</Text>
                 </View>
                 <TouchableOpacity style={styles.touristMenuBtn} onPress={() => navigation.navigate('Request')}>
                   <MaterialIcons name="support-agent" size={18} color="#fff" />
@@ -117,23 +152,23 @@ export default function ProfileScreen({ navigation }: any) {
                   <MaterialIcons name="person" size={36} color={Colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.touristName}>Welcome, {displayName}</Text>
-                  <Text style={styles.touristSub}>Use visitor tools, request support, and track travel services.</Text>
+                  <Text style={styles.touristName}>{t('Welcome', 'स्वागत छ')}, {displayName}</Text>
+                  <Text style={styles.touristSub}>{t('Use visitor tools, request support, and track travel services.', 'आगन्तुक उपकरण प्रयोग गर्नुहोस्, सहयोग माग्नुहोस्, र यात्रा सेवाहरू ट्र्याक गर्नुहोस्।')}</Text>
                 </View>
               </View>
 
               <View style={styles.touristMetaRow}>
                 <View style={styles.touristMetaPill}>
-                  <Text style={styles.touristMetaLabel}>Passport</Text>
+                  <Text style={styles.touristMetaLabel}>{t('Passport', 'पासपोर्ट')}</Text>
                   <Text style={styles.touristMetaValue}>{tourist?.passport_no || '—'}</Text>
                 </View>
                 <View style={styles.touristMetaPill}>
-                  <Text style={styles.touristMetaLabel}>Nationality</Text>
+                  <Text style={styles.touristMetaLabel}>{t('Nationality', 'राष्ट्रियता')}</Text>
                   <Text style={styles.touristMetaValue}>{tourist?.nationality || '—'}</Text>
                 </View>
                 <View style={styles.touristMetaPill}>
-                  <Text style={styles.touristMetaLabel}>Mode</Text>
-                  <Text style={styles.touristMetaValue}>Tourist</Text>
+                  <Text style={styles.touristMetaLabel}>{t('Mode', 'मोड')}</Text>
+                  <Text style={styles.touristMetaValue}>{t('Tourist', 'पर्यटक')}</Text>
                 </View>
               </View>
             </LinearGradient>
@@ -141,26 +176,26 @@ export default function ProfileScreen({ navigation }: any) {
             <View style={styles.touristStatsRow}>
               <View style={styles.statCard}>
                 <Text style={styles.statNum}>{touristRequests.length}</Text>
-                <Text style={styles.statLbl}>Visitor Requests</Text>
+                <Text style={styles.statLbl}>{t('Visitor Requests', 'आगन्तुक अनुरोध')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={[styles.statNum, { color: Colors.success }]}>{approved}</Text>
-                <Text style={styles.statLbl}>Approved</Text>
+                <Text style={styles.statLbl}>{t('Approved', 'स्वीकृत')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={[styles.statNum, { color: '#b7791f' }]}>{pending}</Text>
-                <Text style={styles.statLbl}>Pending</Text>
+                <Text style={styles.statLbl}>{t('Pending', 'पेन्डिङ')}</Text>
               </View>
             </View>
 
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Quick Actions</Text>
+              <Text style={styles.sectionTitle}>{t('Quick Actions', 'छिटो कार्यहरू')}</Text>
               <View style={styles.actionGrid}>
                 {[
-                  { icon: 'map', label: 'Explore Pokhara', action: () => navigation.navigate('Home') },
-                  { icon: 'verified-user', label: 'Permit Help', action: () => navigation.navigate('Request') },
-                  { icon: 'directions-bus', label: 'Transport', action: () => navigation.navigate('Track') },
-                  { icon: 'sos', label: 'Emergency', action: () => navigation.navigate('Verify') },
+                  { icon: 'map', label: t('Explore Pokhara', 'पोखरा अन्वेषण'), action: () => navigation.navigate('Home') },
+                  { icon: 'verified-user', label: t('Permit Help', 'अनुमति सहायता'), action: () => navigation.navigate('Request') },
+                  { icon: 'directions-bus', label: t('Transport', 'यातायात'), action: () => navigation.navigate('Track') },
+                  { icon: 'sos', label: t('Emergency', 'आपतकालीन'), action: () => navigation.navigate('Verify') },
                 ].map((item) => (
                   <TouchableOpacity key={item.label} style={styles.actionCard} onPress={item.action}>
                     <View style={styles.actionIcon}>
@@ -173,32 +208,32 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
 
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Travel Support</Text>
+              <Text style={styles.sectionTitle}>{t('Travel Support', 'यात्रा सहायता')}</Text>
               <View style={styles.supportItem}>
                 <MaterialIcons name="location-on" size={18} color={Colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.supportTitle}>Stay in Pokhara</Text>
-                  <Text style={styles.supportText}>Ward, hotel, and route help for your current visit.</Text>
+                  <Text style={styles.supportTitle}>{t('Stay in Pokhara', 'पोखरामै बस्नुहोस्')}</Text>
+                  <Text style={styles.supportText}>{t('Ward, hotel, and route help for your current visit.', 'तपाईंको वर्तमान यात्राका लागि वडा, होटल, र मार्ग सहायता।')}</Text>
                 </View>
               </View>
               <View style={styles.supportItem}>
                 <MaterialIcons name="security" size={18} color={Colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.supportTitle}>Safety & Assistance</Text>
-                  <Text style={styles.supportText}>Get help quickly from the tourist desk or local contacts.</Text>
+                  <Text style={styles.supportTitle}>{t('Safety & Assistance', 'सुरक्षा र सहायता')}</Text>
+                  <Text style={styles.supportText}>{t('Get help quickly from the tourist desk or local contacts.', 'पर्यटक डेस्क वा स्थानीय सम्पर्कबाट छिटो सहायता पाउनुहोस्।')}</Text>
                 </View>
               </View>
               <View style={styles.supportItem}>
                 <MaterialIcons name="bookmark-border" size={18} color={Colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.supportTitle}>Travel Notes</Text>
-                  <Text style={styles.supportText}>Keep your passport, visa, and itinerary details visible here.</Text>
+                  <Text style={styles.supportTitle}>{t('Travel Notes', 'यात्रा नोटहरू')}</Text>
+                  <Text style={styles.supportText}>{t('Keep your passport, visa, and itinerary details visible here.', 'आफ्नो पासपोर्ट, भिसा, र यात्रा विवरण यहाँ देखिने गरी राख्नुहोस्।')}</Text>
                 </View>
               </View>
             </View>
 
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Visitor Requests</Text>
+              <Text style={styles.sectionTitle}>{t('Visitor Requests', 'आगन्तुक अनुरोध')}</Text>
               {touristRequests.length > 0 ? touristRequests.slice(0, 3).map((req) => (
                 <View key={req.request_id} style={styles.requestItem}>
                   <View style={styles.requestIcon}>
@@ -213,16 +248,15 @@ export default function ProfileScreen({ navigation }: any) {
                   </View>
                 </View>
               )) : (
-                <Text style={styles.emptyText}>No tourist requests yet. Use the Request tab to ask for travel help or support documents.</Text>
+                <Text style={styles.emptyText}>{t('No tourist requests yet. Use the Request tab to ask for travel help or support documents.', 'अहिलेसम्म कुनै आगन्तुक अनुरोध छैन। यात्रा सहायता वा कागजातका लागि Request ट्याब प्रयोग गर्नुहोस्।')}</Text>
               )}
             </View>
 
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Language</Text>
+              <Text style={styles.sectionTitle}>{t('Language', 'भाषा')}</Text>
               {[
                 { code: 'en', flag: '🇺🇸', label: 'English' },
                 { code: 'ne', flag: '🇳🇵', label: 'नेपाली' },
-                { code: 'hi', flag: '🇮🇳', label: 'हिन्दी' },
               ].map((lang) => (
                 <TouchableOpacity
                   key={lang.code}
@@ -237,10 +271,10 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
 
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Tourist Settings</Text>
+              <Text style={styles.sectionTitle}>{t('Tourist Settings', 'पर्यटक सेटिङ')}</Text>
               <View style={styles.toggleRow}>
                 <MaterialIcons name="notifications" size={20} color={Colors.primary} />
-                <Text style={styles.toggleText}>Push Notifications</Text>
+                <Text style={styles.toggleText}>{t('Push Notifications', 'सूचना प्राप्त गर्नुहोस्')}</Text>
                 <Switch
                   value={notificationsOn}
                   onValueChange={setNotificationsOn}
@@ -250,32 +284,47 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
               <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
                 <MaterialIcons name="logout" size={18} color={Colors.secondary} />
-                <Text style={styles.logoutText}>Logout</Text>
+                <Text style={styles.logoutText}>{t('Logout', 'लगआउट')}</Text>
               </TouchableOpacity>
             </View>
           </>
         ) : (
           <>
             <View style={styles.profileHeader}>
-              <View style={styles.avatarWrap}>
-                <View style={styles.avatar}>
-                  <MaterialIcons name="person" size={36} color={Colors.primary} />
+              <View style={styles.profileTopRow}>
+                <View style={styles.avatarWrap}>
+                  <View style={styles.avatar}>
+                    <MaterialIcons name="person" size={34} color={Colors.primary} />
+                  </View>
+                  <View style={styles.verifiedBadge}>
+                    <MaterialIcons name="verified" size={11} color="#fff" />
+                  </View>
                 </View>
-                <View style={styles.verifiedBadge}>
-                  <MaterialIcons name="verified" size={12} color="#fff" />
+                <View style={styles.profileInfoWrap}>
+                  <View style={styles.profileNameRow}>
+                    <Text style={styles.profileName}>{t('Namaste', 'नमस्ते')}, {displayName}</Text>
+                    <View style={styles.premiumBadge}>
+                      <MaterialIcons name="workspace-premium" size={13} color={Colors.onPrimaryFixedVariant} />
+                      <Text style={styles.premiumText}>{t('Verified', 'प्रमाणित')}</Text>
+                    </View>
+                  </View>
+                  {displayNE !== '' && <Text style={styles.profileNameNE}>{displayNE}</Text>}
+                  <View style={styles.locationRow}>
+                    <MaterialIcons name="location-on" size={13} color={Colors.onSurfaceVariant} />
+                    <Text style={styles.locationText}>{t('Ward No.', 'वडा नम्बर')} {wardNum}, {profile?.district || 'Kaski'}, Pokhara</Text>
+                  </View>
                 </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.profileName}>Namaste, {displayName}</Text>
-                {displayNE !== '' && <Text style={styles.profileNameNE}>{displayNE}</Text>}
-                <View style={styles.locationRow}>
-                  <MaterialIcons name="location-on" size={13} color={Colors.onSurfaceVariant} />
-                  <Text style={styles.locationText}>Ward No. {wardNum}, {profile?.district || 'Kaski'}, Pokhara</Text>
+
+              <View style={styles.profileMetaRow}>
+                <View style={styles.metaChip}>
+                  <Text style={styles.metaChipLabel}>{t('Card No', 'कार्ड नम्बर')}</Text>
+                  <Text style={styles.metaChipValue}>{profile?.nid || citizen?.nid || 'PKR-9928-102'}</Text>
                 </View>
-              </View>
-              <View style={styles.premiumBadge}>
-                <MaterialIcons name="workspace-premium" size={14} color={Colors.onPrimaryFixedVariant} />
-                <Text style={styles.premiumText}>Verified</Text>
+                <View style={styles.metaChip}>
+                  <Text style={styles.metaChipLabel}>{t('Location', 'स्थान')}</Text>
+                  <Text style={styles.metaChipValue}>{t('Ward', 'वडा')} {wardNum}</Text>
+                </View>
               </View>
             </View>
 
@@ -290,8 +339,8 @@ export default function ProfileScreen({ navigation }: any) {
               <View style={{ position: 'relative', zIndex: 1 }}>
                 <View style={styles.idTopRow}>
                   <View>
-                    <Text style={styles.idGovLabel}>Government of Nepal</Text>
-                    <Text style={styles.idCardTitle}>Digital National ID</Text>
+                    <Text style={styles.idGovLabel}>{t('Government of Nepal', 'नेपाल सरकार')}</Text>
+                    <Text style={styles.idCardTitle}>{t('Digital National ID', 'डिजिटल राष्ट्रिय परिचयपत्र')}</Text>
                   </View>
                   <View style={styles.idHologram}>
                     <MaterialIcons name="security" size={28} color="rgba(255,255,255,0.5)" />
@@ -300,18 +349,18 @@ export default function ProfileScreen({ navigation }: any) {
 
                 <View style={styles.idFields}>
                   <View style={styles.idField}>
-                    <Text style={styles.idFieldLabel}>Citizen NID</Text>
+                    <Text style={styles.idFieldLabel}>{t('Citizen NID', 'नागरिक NID')}</Text>
                     <Text style={styles.idFieldValue}>{profile?.nid || citizen?.nid || 'PKR-9928-102'}</Text>
                   </View>
                   <View style={styles.idField}>
-                    <Text style={styles.idFieldLabel}>Ward Profile</Text>
-                    <Text style={styles.idFieldValue}>Ward {wardNum}, {profile?.district || 'Kaski'}</Text>
+                    <Text style={styles.idFieldLabel}>{t('Ward Profile', 'वडा प्रोफाइल')}</Text>
+                    <Text style={styles.idFieldValue}>{t('Ward', 'वडा')} {wardNum}, {profile?.district || 'Kaski'}</Text>
                   </View>
                   <View style={styles.idField}>
-                    <Text style={styles.idFieldLabel}>Status</Text>
+                    <Text style={styles.idFieldLabel}>{t('Status', 'स्थिति')}</Text>
                     <View style={styles.activeStatus}>
                       <View style={styles.activeDot} />
-                      <Text style={styles.activeText}>ACTIVE</Text>
+                      <Text style={styles.activeText}>{t('ACTIVE', 'सक्रिय')}</Text>
                     </View>
                   </View>
                 </View>
@@ -322,11 +371,11 @@ export default function ProfileScreen({ navigation }: any) {
                     onPress={() => navigation.navigate('Verify')}
                   >
                     <MaterialIcons name="qr-code-2" size={18} color="#fff" />
-                    <Text style={styles.idBtnText}>Show QR</Text>
+                    <Text style={styles.idBtnText}>{t('Show QR', 'QR देखाउनुहोस्')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.idBtnFilled}>
                     <MaterialIcons name="download" size={18} color={Colors.secondary} />
-                    <Text style={[styles.idBtnText, { color: Colors.secondary }]}>Download PDF</Text>
+                    <Text style={[styles.idBtnText, { color: Colors.secondary }]}>{t('Download PDF', 'PDF डाउनलोड')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -335,28 +384,27 @@ export default function ProfileScreen({ navigation }: any) {
             <View style={styles.statsRow}>
               <View style={styles.statCard}>
                 <Text style={styles.statNum}>{citizenRequests.length}</Text>
-                <Text style={styles.statLbl}>Requests</Text>
+                <Text style={styles.statLbl}>{t('Requests', 'अनुरोध')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={[styles.statNum, { color: Colors.success }]}>{approved}</Text>
-                <Text style={styles.statLbl}>Approved</Text>
+                <Text style={styles.statLbl}>{t('Approved', 'स्वीकृत')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={[styles.statNum, { color: '#b7791f' }]}>{pending}</Text>
-                <Text style={styles.statLbl}>Pending</Text>
+                <Text style={styles.statLbl}>{t('Pending', 'पेन्डिङ')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={[styles.statNum, { color: Colors.primary }]}>{documents.length}</Text>
-                <Text style={styles.statLbl}>Documents</Text>
+                <Text style={styles.statLbl}>{t('Documents', 'कागजात')}</Text>
               </View>
             </View>
 
             <View style={styles.langCard}>
-              <Text style={styles.langCardTitle}>Preferred Language</Text>
+              <Text style={styles.langCardTitle}>{t('Preferred Language', 'रुचाइएको भाषा')}</Text>
               {[
                 { code: 'ne', flag: '🇳🇵', label: 'नेपाली' },
                 { code: 'en', flag: '🇺🇸', label: 'English' },
-                { code: 'gu', flag: '🏔️', label: 'गुरुङ' },
               ].map((lang) => (
                 <TouchableOpacity
                   key={lang.code}
@@ -372,12 +420,12 @@ export default function ProfileScreen({ navigation }: any) {
                   )}
                 </TouchableOpacity>
               ))}
-              <Text style={styles.langNote}>Changes apply across all civic services.</Text>
+              <Text style={styles.langNote}>{t('Changes apply across all civic services.', 'परिवर्तन सबै नागरिक सेवामा लागू हुन्छ।')}</Text>
             </View>
 
             {documents.length > 0 && (
               <View style={styles.docsCard}>
-                <Text style={styles.docsTitle}>My PRATIBIMBA Documents</Text>
+                <Text style={styles.docsTitle}>{t('My PRATIBIMBA Documents', 'मेरो PRATIBIMBA कागजातहरू')}</Text>
                 {documents.slice(0, 3).map((doc) => (
                   <View key={doc.dtid} style={styles.docItem}>
                     <View style={styles.docIcon}>
@@ -400,8 +448,8 @@ export default function ProfileScreen({ navigation }: any) {
             <View style={styles.jobCard}>
               <View style={styles.jobHeader}>
                 <View>
-                  <Text style={styles.jobTitle}>Job Portal</Text>
-                  <Text style={styles.jobSub}>Active vacancies in Gandaki</Text>
+                  <Text style={styles.jobTitle}>{t('Job Portal', 'रोजगार पोर्टल')}</Text>
+                  <Text style={styles.jobSub}>{t('Active vacancies in Gandaki', 'गण्डकीका सक्रिय रिक्त पदहरू')}</Text>
                 </View>
                 <TouchableOpacity style={styles.jobHeaderBtn}>
                   <MaterialIcons name="work" size={20} color={Colors.onPrimaryFixedVariant} />
@@ -420,30 +468,18 @@ export default function ProfileScreen({ navigation }: any) {
                 </TouchableOpacity>
               ))}
               <TouchableOpacity style={styles.jobViewAll}>
-                <Text style={styles.jobViewAllText}>View All 12 Vacancies</Text>
+                <Text style={styles.jobViewAllText}>{t('View All 12 Vacancies', 'सबै १२ पदहरू हेर्नुहोस्')}</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.settingsGrid}>
-              {[
-                { icon: 'payments', label: 'Tax History', action: () => {} },
-                { icon: 'verified-user', label: 'Privacy', action: () => {} },
-                { icon: 'help-center', label: 'Civic Help', action: () => {} },
-              ].map((item) => (
-                <TouchableOpacity key={item.label} style={styles.settingCard} onPress={item.action}>
-                  <MaterialIcons name={item.icon as any} size={26} color={Colors.primary} />
-                  <Text style={styles.settingLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity style={[styles.settingCard, styles.settingCardLogout]} onPress={handleLogout}>
-                <MaterialIcons name="logout" size={26} color={Colors.secondary} />
-                <Text style={[styles.settingLabel, { color: Colors.secondary }]}>Logout</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.logoutBtnWide} onPress={handleLogout}>
+              <MaterialIcons name="logout" size={20} color={Colors.secondary} />
+              <Text style={styles.logoutBtnWideText}>{t('Logout', 'लगआउट')}</Text>
+            </TouchableOpacity>
 
             <View style={styles.notifRow}>
               <MaterialIcons name="notifications" size={20} color={Colors.primary} />
-              <Text style={styles.notifText}>Push Notifications</Text>
+              <Text style={styles.notifText}>{t('Push Notifications', 'पुश सूचना')}</Text>
               <Switch
                 value={notificationsOn}
                 onValueChange={setNotificationsOn}
@@ -452,11 +488,38 @@ export default function ProfileScreen({ navigation }: any) {
               />
             </View>
 
-            <Text style={styles.version}>Mero Sahar v1.0.0 · Powered by PRATIBIMBA NDO</Text>
-            <Text style={styles.versionSub}>Nepal Electronic Transactions Act 2063</Text>
+            <Text style={styles.version}>{t('Hamro Pokhara v1.0.0 · Powered by PRATIBIMBA NDO', 'हाम्रो पोखरा v1.0.0 · PRATIBIMBA NDO द्वारा सञ्चालित')}</Text>
+            <Text style={styles.versionSub}>{t('Nepal Electronic Transactions Act 2063', 'नेपाल इलेक्ट्रोनिक लेनदेन ऐन २०६३')}</Text>
           </>
         )}
       </ScrollView>
+
+      <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setShowMenu(false)}>
+          <TouchableOpacity style={styles.menuSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>{t('Menu', 'मेनु')}</Text>
+              <TouchableOpacity style={styles.menuClose} onPress={() => setShowMenu(false)}>
+                <MaterialIcons name="close" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+            {localizedMenuItems.map((item) => (
+              <TouchableOpacity
+                key={item.label}
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  item.action();
+                }}
+              >
+                <MaterialIcons name={item.icon as any} size={18} color={Colors.primary} />
+                <Text style={styles.menuItemText}>{item.label}</Text>
+                <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
+              </TouchableOpacity>
+            ))}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -464,6 +527,51 @@ export default function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scroll: { padding: 16, paddingBottom: 48, gap: 14 },
+  headerLogo: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,20,18,0.35)',
+    justifyContent: 'flex-start',
+    paddingTop: 72,
+    paddingHorizontal: 16,
+  },
+  menuSheet: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: 16,
+    ...Shadow.lg,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  menuTitle: { fontSize: 18, fontWeight: '800', color: Colors.primary },
+  menuClose: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.outlineVariant,
+  },
+  menuItemText: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.primary },
 
   touristHero: { borderRadius: Radius.xxl, padding: 18, overflow: 'hidden', ...Shadow.lg },
   touristTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
@@ -480,16 +588,23 @@ const styles = StyleSheet.create({
   touristMetaValue: { fontSize: 12, color: '#fff', fontWeight: '800', marginTop: 4 },
   touristStatsRow: { flexDirection: 'row', gap: 10 },
 
-  profileHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 16, ...Shadow.sm },
+  profileHeader: { backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 14, ...Shadow.sm },
+  profileTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   avatarWrap: { position: 'relative' },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: Colors.surfaceContainerLowest },
-  verifiedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: Colors.secondary, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
-  profileName: { fontSize: 20, fontWeight: '800', color: Colors.primary },
+  avatar: { width: 68, height: 68, borderRadius: 34, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.surfaceContainerLowest },
+  verifiedBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: Colors.secondary, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  profileInfoWrap: { flex: 1, minWidth: 0 },
+  profileNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  profileName: { fontSize: 16, fontWeight: '800', color: Colors.primary, flexShrink: 1 },
   profileNameNE: { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: 2 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  locationText: { fontSize: 12, color: Colors.onSurfaceVariant },
-  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryFixed, paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full },
+  locationText: { fontSize: 11.5, color: Colors.onSurfaceVariant, flexShrink: 1 },
+  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryFixed, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full },
   premiumText: { fontSize: 10, fontWeight: '700', color: Colors.onPrimaryFixedVariant },
+  profileMetaRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 },
+  metaChip: { flexGrow: 1, minWidth: 120, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, paddingHorizontal: 10, paddingVertical: 8 },
+  metaChipLabel: { fontSize: 10, fontWeight: '700', color: Colors.outline, textTransform: 'uppercase', letterSpacing: 0.4 },
+  metaChipValue: { fontSize: 12, fontWeight: '700', color: Colors.primary, marginTop: 3 },
 
   idCard: { borderRadius: Radius.xxl, padding: 24, overflow: 'hidden', ...Shadow.lg },
   idGlow: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.08)' },
@@ -497,8 +612,8 @@ const styles = StyleSheet.create({
   idGovLabel: { fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.6)', letterSpacing: 1.5, textTransform: 'uppercase' },
   idCardTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 2 },
   idHologram: { width: 56, height: 56, borderRadius: Radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)' },
-  idFields: { flexDirection: 'row', gap: 20, marginBottom: 20 },
-  idField: { flex: 1 },
+  idFields: { flexDirection: 'row', gap: 10, marginBottom: 20, flexWrap: 'wrap' },
+  idField: { flexGrow: 1, minWidth: 96 },
   idFieldLabel: { fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   idFieldValue: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: 'monospace' },
   activeStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -556,10 +671,8 @@ const styles = StyleSheet.create({
   jobItemOrg: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2 },
   jobViewAll: { paddingVertical: 14, borderWidth: 1, borderColor: 'rgba(0,59,90,0.1)', borderRadius: Radius.xl, alignItems: 'center', marginTop: 4 },
   jobViewAllText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  settingsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  settingCard: { width: '47%', backgroundColor: 'rgba(230,233,232,0.5)', padding: 20, borderRadius: Radius.xxl, alignItems: 'center', gap: 10 },
-  settingCardLogout: { backgroundColor: 'rgba(175,47,35,0.05)' },
-  settingLabel: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  logoutBtnWide: { marginTop: 10, backgroundColor: 'rgba(175,47,35,0.05)', borderWidth: 1, borderColor: 'rgba(175,47,35,0.15)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: Radius.xl },
+  logoutBtnWideText: { fontSize: 13, fontWeight: '800', color: Colors.secondary },
   notifRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.xl },
   notifText: { flex: 1, fontSize: 13, fontWeight: '600', color: Colors.primary },
   version: { textAlign: 'center', fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 4 },

@@ -17,6 +17,7 @@ Modern, dynamic G2C ward portal built with Next.js (App Router) for digital gove
 - Tailwind CSS 4 (utility layer)
 - `src/lib/portal-api.ts` for backend integration
 - `src/types/portal.ts` for domain types
+- `hls.js` for browser playback of live m3u8 streams
 
 ## Run Locally
 
@@ -26,17 +27,18 @@ Modern, dynamic G2C ward portal built with Next.js (App Router) for digital gove
 npm install
 ```
 
-2. Configure environment:
+1. Configure environment:
 
 Create a file named `.env.local` and copy values from `.env.example`.
 
-3. Set backend URL in `.env.local`:
+1. Set backend URL in `.env.local`:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+NEXT_PUBLIC_HLS_STREAM_URL=http://192.168.100.55/hls/stream.m3u8
 ```
 
-4. Start the app:
+1. Start the app:
 
 ```bash
 npm run dev

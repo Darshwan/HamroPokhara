@@ -82,6 +82,7 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		traceID := authTraceID(c)
 		start := time.Now()
+		debugOCR := strings.EqualFold(strings.TrimSpace(os.Getenv("OCR_DEBUG")), "true")
 
 		var req struct {
 			ImageBase64   string `json:"image_base64"`
@@ -100,13 +101,13 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 
 		imageB64 := strings.TrimSpace(req.ImageBase64)
 		ocrHint := strings.TrimSpace(req.ExtractedText)
-		log.Printf("[OCR][%s][request] doc_type=%s language=%s image_bytes=%d extracted_text_len=%d", traceID, req.DocumentType, strings.TrimSpace(req.Language), len(imageB64), len(ocrHint))
-		if ocrHint != "" {
-			log.Printf("[OCR][%s][request] extracted_text_preview=%q", traceID, truncateForLog(ocrHint, 240))
+		log.Printf("[OCR][%s] start doc_type=%s image_bytes=%d text_len=%d", traceID, req.DocumentType, len(imageB64), len(ocrHint))
+		if debugOCR && ocrHint != "" {
+			log.Printf("[OCR][%s][debug] extracted_text=%q", traceID, truncateForLog(ocrHint, 240))
 		}
 
 		if imageB64 == "" && ocrHint == "" {
-			log.Printf("[OCR][%s][validate] rejected: both image_base64 and extracted_text missing", traceID)
+			log.Printf("[OCR][%s] rejected: missing image_base64 and extracted_text", traceID)
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "image_base64 or extracted_text is required"})
 		}
 
@@ -115,29 +116,35 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 		var rawText string
 		var googleOK bool
 		googleAttempted := false
+		ocrReason := ""
 		if imageB64 != "" {
 			googleKey := strings.TrimSpace(os.Getenv("GOOGLE_VISION_API_KEY"))
 			if googleKey != "" {
 				googleAttempted = true
-				log.Printf("[OCR][%s][google] attempting vision OCR", traceID)
 				text, err := callGoogleVision(ctx, googleKey, imageB64)
 				if err == nil && len(strings.TrimSpace(text)) > 20 {
 					rawText = text
 					googleOK = true
-					log.Printf("[OCR][%s][google] success raw_text_len=%d", traceID, len(rawText))
-				} else if err != nil {
-					log.Printf("[OCR][%s][google] failed: %v", traceID, err)
-				} else {
-					log.Printf("[OCR][%s][google] returned low text length=%d", traceID, len(strings.TrimSpace(text)))
+					if debugOCR {
+						log.Printf("[OCR][%s][debug] google raw_text_len=%d", traceID, len(rawText))
+					}
+				} else if debugOCR && err != nil {
+					log.Printf("[OCR][%s][debug] google failed: %v", traceID, err)
+					ocrReason = "google_vision_failed"
 				}
 			}
 		}
-		if !googleAttempted {
-			log.Printf("[OCR][%s][google] skipped (missing image or GOOGLE_VISION_API_KEY)", traceID)
+		if debugOCR && !googleAttempted {
+			log.Printf("[OCR][%s][debug] google skipped", traceID)
+			if imageB64 != "" {
+				ocrReason = "google_vision_not_configured"
+			}
 		}
 		if !googleOK && ocrHint != "" {
 			rawText = ocrHint
-			log.Printf("[OCR][%s][fallback] using extracted_text from client", traceID)
+			if debugOCR {
+				log.Printf("[OCR][%s][debug] using client extracted_text fallback", traceID)
+			}
 		}
 
 		var structuredFields interface{}
@@ -145,28 +152,41 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 
 		anthropicKey := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
 		if imageB64 != "" && anthropicKey != "" {
-			log.Printf("[OCR][%s][claude] attempting vision extraction", traceID)
 			fields, err := extractWithClaude(ctx, anthropicKey, imageB64, req.DocumentType, rawText)
 			if err == nil && fields != nil {
 				structuredFields = fields
 				extractionSource = "claude_vision"
-				log.Printf("[OCR][%s][claude] success", traceID)
-			} else if err != nil {
-				log.Printf("[OCR][%s][claude] failed: %v", traceID, err)
+				if debugOCR {
+					log.Printf("[OCR][%s][debug] claude success", traceID)
+				}
+			} else if debugOCR && err != nil {
+				log.Printf("[OCR][%s][debug] claude failed: %v", traceID, err)
+				if ocrReason == "" {
+					ocrReason = "claude_vision_failed"
+				}
 			}
-		} else {
-			log.Printf("[OCR][%s][claude] skipped (missing image or ANTHROPIC_API_KEY)", traceID)
+		} else if imageB64 != "" {
+			if ocrReason == "" {
+				ocrReason = "claude_not_configured"
+			}
 		}
 
 		if structuredFields == nil && rawText != "" {
 			structuredFields = parseRawText(rawText, req.DocumentType)
 			extractionSource = "ocr_parsed"
-			log.Printf("[OCR][%s][parser] fallback parser used raw_text_len=%d", traceID, len(rawText))
+			if debugOCR {
+				log.Printf("[OCR][%s][debug] parser fallback raw_text_len=%d", traceID, len(rawText))
+			}
 		}
 
 		if structuredFields == nil {
 			structuredFields = emptyFields(req.DocumentType)
-			log.Printf("[OCR][%s][result] empty fields generated (manual required)", traceID)
+			if debugOCR {
+				log.Printf("[OCR][%s][debug] empty fields generated", traceID)
+			}
+			if ocrReason == "" {
+				ocrReason = "manual_required"
+			}
 		}
 
 		normalized := buildNormalizedAutofill(req.DocumentType, structuredFields)
@@ -174,9 +194,12 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 
 		processingMs := int(time.Since(start).Milliseconds())
 		fieldsJSON, _ := json.Marshal(structuredFields)
-		log.Printf("[OCR][%s][read] source=%s structured_fields=%s", traceID, extractionSource, truncateForLog(string(fieldsJSON), 800))
 		normJSON, _ := json.Marshal(normalized)
-		log.Printf("[OCR][%s][send] normalized_fields=%s stored=%v autofill_ready=%v processing_ms=%d", traceID, truncateForLog(string(normJSON), 600), stored, stored, processingMs)
+		if debugOCR {
+			log.Printf("[OCR][%s][debug] structured_fields=%s", traceID, truncateForLog(string(fieldsJSON), 800))
+			log.Printf("[OCR][%s][debug] normalized_fields=%s", traceID, truncateForLog(string(normJSON), 600))
+		}
+		log.Printf("[OCR][%s] done source=%s stored=%v processing_ms=%d", traceID, extractionSource, stored, processingMs)
 		auditOCR(db, req.DocumentType, string(fieldsJSON), processingMs, c.IP())
 
 		return c.Status(200).JSON(fiber.Map{
@@ -196,6 +219,7 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 			"district":              normalized["district"],
 			"ward":                  normalized["ward"],
 			"source":                extractionSource,
+			"ocr_reason":            ocrReason,
 			"processing_ms":         processingMs,
 			"requires_verification": true,
 			"message": map[string]string{

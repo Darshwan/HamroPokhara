@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard,
+  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Shadow, Typography } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { citizenAPI, statsAPI, weatherAPI } from '../api/client';
@@ -20,6 +21,13 @@ type WeatherCardData = {
   aqi: number;
 };
 
+type ForecastDay = {
+  date: string;
+  weatherCode: number;
+  maxTemp: number;
+  minTemp: number;
+};
+
 const DEFAULT_WEATHER: WeatherCardData = {
   temperature: 24,
   weatherCode: 1,
@@ -30,16 +38,16 @@ const DEFAULT_WEATHER: WeatherCardData = {
   aqi: 42,
 };
 
-const getWeatherCondition = (code: number) => {
-  if (code === 0) return 'Clear Sky';
-  if (code <= 2) return 'Mostly Sunny';
-  if (code === 3) return 'Cloudy';
-  if (code >= 45 && code <= 48) return 'Foggy';
-  if (code >= 51 && code <= 67) return 'Rainy';
-  if (code >= 71 && code <= 77) return 'Snow';
-  if (code >= 80 && code <= 86) return 'Rain Showers';
-  if (code >= 95) return 'Thunderstorm';
-  return 'Weather Update';
+const getWeatherCondition = (code: number, isNepali = false) => {
+  if (code === 0) return isNepali ? 'खुला आकाश' : 'Clear Sky';
+  if (code <= 2) return isNepali ? 'आंशिक घाम' : 'Mostly Sunny';
+  if (code === 3) return isNepali ? 'बादल' : 'Cloudy';
+  if (code >= 45 && code <= 48) return isNepali ? 'कुहिरो' : 'Foggy';
+  if (code >= 51 && code <= 67) return isNepali ? 'वर्षा' : 'Rainy';
+  if (code >= 71 && code <= 77) return isNepali ? 'हिमपात' : 'Snow';
+  if (code >= 80 && code <= 86) return isNepali ? 'वर्षा छिटा' : 'Rain Showers';
+  if (code >= 95) return isNepali ? 'चट्याङ्गसहित वर्षा' : 'Thunderstorm';
+  return isNepali ? 'मौसम अपडेट' : 'Weather Update';
 };
 
 const getWeatherIcon = (code: number, isDay: boolean) => {
@@ -53,93 +61,109 @@ const getWeatherIcon = (code: number, isDay: boolean) => {
   return 'wb-sunny';
 };
 
-const getUVLabel = (uvIndex: number) => {
-  if (uvIndex < 3) return 'Low';
-  if (uvIndex < 6) return 'Moderate';
-  if (uvIndex < 8) return 'High';
-  if (uvIndex < 11) return 'Very High';
-  return 'Extreme';
+const getUVLabel = (uvIndex: number, isNepali = false) => {
+  if (uvIndex < 3) return isNepali ? 'कम' : 'Low';
+  if (uvIndex < 6) return isNepali ? 'मध्यम' : 'Moderate';
+  if (uvIndex < 8) return isNepali ? 'उच्च' : 'High';
+  if (uvIndex < 11) return isNepali ? 'धेरै उच्च' : 'Very High';
+  return isNepali ? 'अत्यधिक' : 'Extreme';
 };
 
-const getAQIState = (aqi: number) => {
-  if (aqi <= 50) return 'Excellent';
-  if (aqi <= 100) return 'Moderate';
-  if (aqi <= 150) return 'Sensitive';
-  if (aqi <= 200) return 'Unhealthy';
-  if (aqi <= 300) return 'Very Unhealthy';
-  return 'Hazardous';
+const getAQIState = (aqi: number, isNepali = false) => {
+  if (aqi <= 50) return isNepali ? 'उत्तम' : 'Excellent';
+  if (aqi <= 100) return isNepali ? 'मध्यम' : 'Moderate';
+  if (aqi <= 150) return isNepali ? 'संवेदनशील' : 'Sensitive';
+  if (aqi <= 200) return isNepali ? 'अस्वस्थ' : 'Unhealthy';
+  if (aqi <= 300) return isNepali ? 'धेरै अस्वस्थ' : 'Very Unhealthy';
+  return isNepali ? 'खतरनाक' : 'Hazardous';
 };
 
 const SERVICES = [
-  { icon: 'receipt-long', label: 'Pay Tax',    screen: 'Request' },
-  { icon: 'water-drop',   label: 'Water Bill', screen: 'Request' },
-  { icon: 'bolt',         label: 'NEA Pay',    screen: 'Request' },
-  { icon: 'description',  label: 'Sifarish',   screen: 'Request' },
+  { icon: 'receipt-long', label: 'Pay Tax', labelNE: 'कर तिर्नुहोस्', screen: 'Request' },
+  { icon: 'water-drop', label: 'Water Bill', labelNE: 'पानीको बिल', screen: 'Request' },
+  { icon: 'bolt', label: 'NEA Pay', labelNE: 'नेपाल विद्युत्', screen: 'Request' },
+  { icon: 'description', label: 'Sifarish', labelNE: 'सिफारिस', screen: 'Request' },
 ];
 
 const TOURIST_SERVICES = [
-  { icon: 'explore', label: 'Explore Pokhara', screen: 'Request', desc: 'Routes, maps, and highlights' },
-  { icon: 'confirmation-number', label: 'Permits', screen: 'Request', desc: 'TIMS and entry guidance' },
-  { icon: 'local-taxi', label: 'Transport', screen: 'Track', desc: 'Shuttle, taxi, and ride help' },
-  { icon: 'support-agent', label: 'Help Desk', screen: 'Verify', desc: 'Emergency and visitor support' },
+  { icon: 'explore', label: 'Explore Pokhara', labelNE: 'पोखरा अन्वेषण', screen: 'Request', desc: 'Routes, maps, and highlights', descNE: 'रुट, नक्सा, र मुख्य ठाउँहरू' },
+  { icon: 'confirmation-number', label: 'Permits', labelNE: 'अनुमतिपत्र', screen: 'Request', desc: 'TIMS and entry guidance', descNE: 'TIMS र प्रवेश सहायता' },
+  { icon: 'local-taxi', label: 'Transport', labelNE: 'यातायात', screen: 'Track', desc: 'Shuttle, taxi, and ride help', descNE: 'शटल, ट्याक्सी, र यात्रा सहायता' },
+  { icon: 'support-agent', label: 'Help Desk', labelNE: 'सहायता डेस्क', screen: 'Verify', desc: 'Emergency and visitor support', descNE: 'आपतकालीन र आगन्तुक सहायता' },
 ];
 
 const TOURIST_MENU = [
-  { icon: 'map', label: 'Explore Pokhara', screen: 'Request' },
-  { icon: 'verified-user', label: 'Permit Help', screen: 'Verify' },
-  { icon: 'directions-bus', label: 'Transport', screen: 'Track' },
-  { icon: 'smart-toy', label: 'AI Assistant', screen: 'Assistant' },
+  { icon: 'map', label: 'Explore Pokhara', labelNE: 'पोखरा अन्वेषण', screen: 'Request' },
+  { icon: 'verified-user', label: 'Permit Help', labelNE: 'अनुमति सहायता', screen: 'Verify' },
+  { icon: 'directions-bus', label: 'Transport', labelNE: 'यातायात', screen: 'Track' },
+  { icon: 'smart-toy', label: 'AI Assistant', labelNE: 'AI सहायक', screen: 'AiAssistant' },
 ];
 
 const CITIZEN_MENU = [
-  { icon: 'assignment', label: 'Ward Services', screen: 'Request' },
-  { icon: 'qr-code', label: 'Digital Card', screen: 'Verify' },
-  { icon: 'history', label: 'My Requests', screen: 'Track' },
-  { icon: 'smart-toy', label: 'AI Assistant', screen: 'Assistant' },
+  { icon: 'assignment', label: 'Ward Services', labelNE: 'वडा सेवा', screen: 'Request' },
+  { icon: 'qr-code', label: 'Digital Card', labelNE: 'डिजिटल कार्ड', screen: 'Verify' },
+  { icon: 'history', label: 'My Requests', labelNE: 'मेरो अनुरोधहरू', screen: 'Track' },
+  { icon: 'smart-toy', label: 'AI Assistant', labelNE: 'AI सहायक', screen: 'AiAssistant' },
 ];
 
-const NOTICES = ['Urgent', 'Infrastructure', 'Health', 'Culture', 'Tourism'];
+const NOTICE_STORY_IMAGES = [
+  'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
+];
 
-const STORY_NEWS = [
+const DEMO_NEWS = [
   {
-    title: 'Ward office opens a new online token desk for faster service pickup.',
-    wardLabel: 'Ward 09',
-    time: 'JUST NOW',
-    image:
-      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80',
-    summary: 'A story-style card can surface the latest update without feeling heavy or formal.',
+    notice_id: 'demo-1',
+    title: 'Lakeside Park Maintenance Schedule',
+    title_ne: 'झील किनारमा पार्क मेरामत कार्यक्रम',
+    category: 'INFRASTRUCTURE',
+    content: 'The Lakeside Park will undergo maintenance from Monday to Friday. Please use alternative routes.',
+    is_urgent: false,
+    published_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    ward_no: 9,
   },
   {
-    title: 'Pokhara set to receive cleaner bus stops and better route signage.',
-    wardLabel: 'Ward 08',
-    time: '2 HOURS AGO',
-    image:
-      'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
-    summary: 'This can become a short official update, a feature story, or a service notice.',
+    notice_id: 'demo-2',
+    title: 'Health Checkup Camp - Ward 9',
+    title_ne: 'स्वास्थ्य परीक्षण शिविर - वार्ड नं. ९',
+    category: 'HEALTH',
+    content: 'Free health checkup camp for senior citizens. Date: Next Saturday, 9 AM at Ward Office.',
+    is_urgent: false,
+    published_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    ward_no: 9,
   },
   {
-    title: 'Water quality testing is now displayed ward-by-ward for residents.',
-    wardLabel: 'Ward 10',
-    time: '5 HOURS AGO',
-    image:
-      'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80',
-    summary: 'The modal can show a short explainer and a direct action button.',
+    notice_id: 'demo-3',
+    title: 'Water Supply Interruption - Emergency Notice',
+    title_ne: 'पानीको आपूर्ति विच्छेद - आपतकालीन सूचना',
+    category: 'UTILITIES',
+    content: 'Water supply will be disrupted tomorrow 8 AM to 4 PM for pipeline maintenance.',
+    is_urgent: true,
+    published_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    ward_no: 9,
   },
   {
-    title: 'Digital permit queue reduced after the first mobile rollout.',
-    wardLabel: 'Ward 07',
-    time: '8 HOURS AGO',
-    image:
-      'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
-    summary: 'A lighter, rounded box layout feels closer to modern consumer apps.',
+    notice_id: 'demo-4',
+    title: 'Community Cleanup Drive - Volunteers Needed',
+    title_ne: 'सामुदायिक सफाइ अभियान - स्वयंसेवक आवश्यक',
+    category: 'COMMUNITY',
+    content: 'Join us for a weekend cleanup drive. Supplies provided. Register at the ward office.',
+    is_urgent: false,
+    published_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    ward_no: 9,
   },
   {
-    title: 'Community festival stories and official notices can live in the same feed.',
-    wardLabel: 'Ward 11',
-    time: '1 DAY AGO',
-    image:
-      'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
-    summary: 'You can keep the feed demo-based while the rest of the app stays functional.',
+    notice_id: 'demo-5',
+    title: 'Road Development Project Updates',
+    title_ne: 'सडक विकास परियोजना अपडेट',
+    category: 'INFRASTRUCTURE',
+    content: 'Phase 2 of the main road construction is now 85% complete. Expected completion by next month.',
+    is_urgent: false,
+    published_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    ward_no: 9,
   },
 ];
 
@@ -170,6 +194,22 @@ type SearchResult = {
   icon: string;
   screen: string;
   keywords: string[];
+};
+
+type MenuItem = {
+  icon: string;
+  label: string;
+  labelNE: string;
+  screen: string;
+};
+
+type ServiceItem = {
+  icon: string;
+  label: string;
+  labelNE: string;
+  screen: string;
+  desc?: string;
+  descNE?: string;
 };
 
 const tokenize = (value: string) =>
@@ -206,16 +246,22 @@ const scoreSearchResult = (query: string, item: SearchResult) => {
 };
 
 export default function HomeScreen({ navigation }: any) {
-  const { citizen, tourist, isTourist, logout } = useStore();
+  const { citizen, tourist, isTourist, logout, language } = useStore();
+  const insets = useSafeAreaInsets();
   const [stats, setStats] = useState<any>(null);
   const [weather, setWeather] = useState<WeatherCardData>(DEFAULT_WEATHER);
+  const [forecastDays, setForecastDays] = useState<ForecastDay[]>([]);
   const [notices, setNotices] = useState<NoticeFeedItem[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(false);
   const [selectedStory, setSelectedStory] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const isNepali = language === 'ne';
+  const today = new Date().toLocaleDateString(isNepali ? 'ne-NP' : 'en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  const t = (en: string, ne: string) => (isNepali ? ne : en);
 
   const loadStats = async () => {
     try {
@@ -247,7 +293,31 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  const loadForecast = async () => {
+    try {
+      const res = await weatherAPI.getPokharaFiveDayForecast();
+      if (!res.success || !res.forecast) return;
+
+      const dates = Array.isArray(res.forecast.dates) ? res.forecast.dates : [];
+      const weatherCodes = Array.isArray(res.forecast.weatherCodes) ? res.forecast.weatherCodes : [];
+      const maxTemps = Array.isArray(res.forecast.maxTemps) ? res.forecast.maxTemps : [];
+      const minTemps = Array.isArray(res.forecast.minTemps) ? res.forecast.minTemps : [];
+
+      const merged = dates.map((date: string, index: number) => ({
+        date,
+        weatherCode: Number(weatherCodes[index] ?? 0),
+        maxTemp: Number(maxTemps[index] ?? 0),
+        minTemp: Number(minTemps[index] ?? 0),
+      }));
+
+      setForecastDays(merged);
+    } catch {
+      setForecastDays([]);
+    }
+  };
+
   const loadNotices = async () => {
+    setNoticesLoading(true);
     try {
       const wardCode = citizen?.ward_code || 'NPL-04-33-09';
       const res = await citizenAPI.getNotices(wardCode);
@@ -256,20 +326,30 @@ export default function HomeScreen({ navigation }: any) {
       }
     } catch {
       setNotices([]);
+    } finally {
+      setNoticesLoading(false);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadStats(), loadWeather(), loadNotices()]);
+    await Promise.all([loadStats(), loadWeather(), loadForecast(), loadNotices()]);
     setRefreshing(false);
   };
 
   useEffect(() => {
     loadStats();
     loadWeather();
+    loadForecast();
     loadNotices();
   }, []);
+
+  const formatForecastDay = (isoDate: string) => {
+    if (!isoDate) return isNepali ? 'दिन' : 'Day';
+    const d = new Date(isoDate);
+    const weekday = d.toLocaleDateString(isNepali ? 'ne-NP' : 'en-US', { weekday: 'short' });
+    return weekday;
+  };
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -279,9 +359,10 @@ export default function HomeScreen({ navigation }: any) {
     return () => clearTimeout(timeout);
   }, [searchQuery]);
 
-  const menuItems = isTourist ? TOURIST_MENU : CITIZEN_MENU;
+  const menuItems: MenuItem[] = isTourist ? TOURIST_MENU : CITIZEN_MENU;
+  const serviceItems: ServiceItem[] = isTourist ? TOURIST_SERVICES : SERVICES;
 
-  const getNoticeWardLabel = (notice: NoticeFeedItem | undefined, fallbackIndex: number) => {
+  const getNoticeWardLabel = (notice: NoticeFeedItem | undefined) => {
     const rawWard =
       notice?.ward_no ??
       notice?.ward ??
@@ -293,54 +374,51 @@ export default function HomeScreen({ navigation }: any) {
       notice?.posted_by_officer?.ward_code;
 
     if (typeof rawWard === 'number') {
-      return `Ward ${String(rawWard).padStart(2, '0')}`;
+      return `${isNepali ? 'वडा' : 'Ward'} ${String(rawWard).padStart(2, '0')}`;
     }
 
     if (typeof rawWard === 'string' && rawWard.trim()) {
       const wardMatch = rawWard.match(/(\d+)/);
       if (wardMatch) {
-        return `Ward ${wardMatch[1].padStart(2, '0')}`;
+        return `${isNepali ? 'वडा' : 'Ward'} ${wardMatch[1].padStart(2, '0')}`;
       }
-      return rawWard.startsWith('Ward') ? rawWard : `Ward ${rawWard}`;
+      if (rawWard.startsWith('Ward') || rawWard.startsWith('वडा')) return rawWard;
+      return `${isNepali ? 'वडा' : 'Ward'} ${rawWard}`;
     }
 
-    return STORY_NEWS[fallbackIndex % STORY_NEWS.length]?.wardLabel || 'Ward 09';
+    const citizenWard = String(citizen?.ward_code || '').match(/(\d+)/g);
+    const wardNo = citizenWard?.[citizenWard.length - 1] || '09';
+    return `${isNepali ? 'वडा' : 'Ward'} ${wardNo.padStart(2, '0')}`;
   };
 
   const storyCards = useMemo(() => {
-    const source = notices.length ? notices : [];
-
-    if (!source.length) {
-      return STORY_NEWS;
-    }
-
-    return source.slice(0, 5).map((notice, index) => ({
-      title: notice.title || notice.title_ne || 'Notice',
-      wardLabel: getNoticeWardLabel(notice, index),
-      time: notice.published_at ? new Date(notice.published_at).toLocaleString([], { month: 'short', day: 'numeric' }) : index === 0 ? 'JUST NOW' : `${index + 1} HRS AGO`,
-      image: STORY_NEWS[index % STORY_NEWS.length].image,
-      summary: notice.content || 'Open the notice board for more detail.',
+    return notices.slice(0, 5).map((notice, index) => ({
+      title: isNepali ? (notice.title_ne || notice.title || 'सूचना') : (notice.title || notice.title_ne || 'Notice'),
+      wardLabel: getNoticeWardLabel(notice),
+      time: notice.published_at ? new Date(notice.published_at).toLocaleString(isNepali ? 'ne-NP' : [], { month: 'short', day: 'numeric' }) : index === 0 ? t('JUST NOW', 'अहिले') : t(`${index + 1} HRS AGO`, `${index + 1} घण्टा अघि`),
+      image: NOTICE_STORY_IMAGES[index % NOTICE_STORY_IMAGES.length],
+      summary: notice.content || t('Open the notice board for more detail.', 'थप विवरणका लागि सूचना बोर्ड खोल्नुहोस्।'),
     }));
-  }, [notices]);
+  }, [notices, citizen?.ward_code, isNepali]);
 
   const searchableItems = useMemo<SearchResult[]>(() => {
     if (isTourist) {
       const serviceItems = TOURIST_SERVICES.map((item) => ({
         id: `tourist-service-${item.label}`,
-        title: item.label,
-        subtitle: item.desc,
+        title: isNepali ? item.labelNE : item.label,
+        subtitle: isNepali ? item.descNE || item.desc || '' : item.desc || '',
         icon: item.icon,
         screen: item.screen,
-        keywords: [item.label, item.desc, 'tourist', 'service', 'pokhara'],
+        keywords: [item.label, item.labelNE, item.desc || '', item.descNE || '', 'tourist', 'service', 'pokhara'],
       }));
 
       const menuSearchItems = TOURIST_MENU.map((item) => ({
         id: `tourist-menu-${item.label}`,
-        title: item.label,
-        subtitle: 'Quick menu action',
+        title: isNepali ? item.labelNE : item.label,
+        subtitle: t('Quick menu action', 'छिटो मेनु कार्य'),
         icon: item.icon,
         screen: item.screen,
-        keywords: [item.label, 'menu', 'tourist'],
+        keywords: [item.label, item.labelNE, 'menu', 'tourist'],
       }));
 
       return [...serviceItems, ...menuSearchItems];
@@ -348,41 +426,33 @@ export default function HomeScreen({ navigation }: any) {
 
     const serviceItems = SERVICES.map((item) => ({
       id: `citizen-service-${item.label}`,
-      title: item.label,
-      subtitle: 'E-Sewa service',
+        title: isNepali ? item.labelNE : item.label,
+        subtitle: t('E-Sewa service', 'ई-सेवा सुविधा'),
       icon: item.icon,
       screen: item.screen,
-      keywords: [item.label, 'service', 'citizen', 'esewa'],
+        keywords: [item.label, item.labelNE, 'service', 'citizen', 'esewa'],
     }));
 
     const menuSearchItems = CITIZEN_MENU.map((item) => ({
       id: `citizen-menu-${item.label}`,
-      title: item.label,
-      subtitle: 'Citizen menu action',
+        title: isNepali ? item.labelNE : item.label,
+        subtitle: t('Citizen menu action', 'नागरिक मेनु कार्य'),
       icon: item.icon,
       screen: item.screen,
-      keywords: [item.label, 'menu', 'citizen', 'ward'],
+        keywords: [item.label, item.labelNE, 'menu', 'citizen', 'ward'],
     }));
 
-    const noticeSource = notices.length
-      ? notices
-      : [
-          { notice_id: 'fallback-urgent', title: 'Water Supply Interruption', title_ne: 'पानी आपूर्ति बन्द', category: 'URGENT', content: 'Water supply interrupted 8AM-4PM on 2082/06/15.', is_urgent: true },
-          { notice_id: 'fallback-infra', title: 'Road Widening Project', title_ne: 'सडक चौडाइ', category: 'INFRASTRUCTURE', content: 'Prithvi Chowk road widening begins next week.', is_urgent: false },
-          { notice_id: 'fallback-health', title: 'Free Health Camp', title_ne: 'स्वास्थ्य शिविर', category: 'HEALTH', content: 'Free checkup at Ward 9 hall on 2082/06/20.', is_urgent: false },
-        ];
-
-    const noticeItems = noticeSource.map((item) => ({
+    const noticeItems = notices.map((item) => ({
       id: item.notice_id || item.title || 'notice',
-      title: item.title || item.title_ne || 'Notice',
-      subtitle: item.content || 'Municipal notice',
+      title: isNepali ? (item.title_ne || item.title || 'सूचना') : (item.title || item.title_ne || 'Notice'),
+      subtitle: item.content || t('Municipal notice', 'नगरपालिका सूचना'),
       icon: item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'newspaper',
       screen: 'CitizenPortal',
       keywords: [item.title || '', item.title_ne || '', item.category || '', item.content || '', 'notice', 'news', 'ward'],
     }));
 
     return [...serviceItems, ...menuSearchItems, ...noticeItems];
-  }, [isTourist, notices]);
+  }, [isTourist, notices, isNepali]);
 
   const searchResults = useMemo(() => {
     if (!debouncedQuery) {
@@ -425,20 +495,23 @@ export default function HomeScreen({ navigation }: any) {
             >
               <View style={styles.touristBadge}>
                 <MaterialIcons name="flight-takeoff" size={14} color={Colors.primary} />
-                <Text style={styles.touristBadgeText}>Tourist Mode</Text>
+                <Text style={styles.touristBadgeText}>{t('Tourist Mode', 'पर्यटक मोड')}</Text>
               </View>
-              <Text style={styles.touristTitle}>Welcome, {tourist?.name || 'Traveler'}</Text>
+              <Text style={styles.touristTitle}>{t('Welcome', 'स्वागत छ')}, {tourist?.name || t('Traveler', 'यात्रु')}</Text>
               <Text style={styles.touristDesc}>
-                Quick access to permits, transport, help, and the best places around Pokhara.
+                {t(
+                  'Quick access to permits, transport, help, and the best places around Pokhara.',
+                  'अनुमति, यातायात, सहायता, र पोखराका प्रमुख ठाउँहरूमा छिटो पहुँच।'
+                )}
               </Text>
               <View style={styles.touristMetaRow}>
                 <View style={styles.touristMetaPill}><Text style={styles.touristMetaText}>{today}</Text></View>
-                <View style={styles.touristMetaPill}><Text style={styles.touristMetaText}>{tourist?.nationality || 'International visitor'}</Text></View>
+                <View style={styles.touristMetaPill}><Text style={styles.touristMetaText}>{tourist?.nationality || t('International visitor', 'अन्तर्राष्ट्रिय आगन्तुक')}</Text></View>
               </View>
             </LinearGradient>
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Visitor Hub <Text style={styles.sectionSub}>/ Quick actions</Text></Text>
+              <Text style={styles.sectionTitle}>{t('Visitor Hub', 'आगन्तुक केन्द्र')} <Text style={styles.sectionSub}>{t('/ Quick actions', '/ छिटो कार्यहरू')}</Text></Text>
             </View>
             <View style={styles.touristGrid}>
               {TOURIST_SERVICES.map((service) => (
@@ -451,24 +524,27 @@ export default function HomeScreen({ navigation }: any) {
                   <View style={styles.touristServiceIcon}>
                     <MaterialIcons name={service.icon as any} size={22} color={Colors.primary} />
                   </View>
-                  <Text style={styles.touristServiceLabel}>{service.label}</Text>
-                  <Text style={styles.touristServiceDesc}>{service.desc}</Text>
+                  <Text style={styles.touristServiceLabel}>{isNepali ? service.labelNE : service.label}</Text>
+                  <Text style={styles.touristServiceDesc}>{isNepali ? service.descNE : service.desc}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <View style={styles.touristBento}>
               <View style={styles.touristInfoCard}>
-                <Text style={styles.touristInfoTag}>Travel helper</Text>
-                <Text style={styles.touristInfoTitle}>Need a route, a guide, or a permit?</Text>
+                <Text style={styles.touristInfoTag}>{t('Travel helper', 'यात्रा सहायक')}</Text>
+                <Text style={styles.touristInfoTitle}>{t('Need a route, a guide, or a permit?', 'बाटो, गाइड, वा अनुमति चाहिएको छ?')}</Text>
                 <Text style={styles.touristInfoDesc}>
-                  Use the hamburger menu for visitor-only shortcuts and local support.
+                  {t(
+                    'Use the hamburger menu for visitor-only shortcuts and local support.',
+                    'आगन्तुकका लागि रहेका छोटा विकल्प र स्थानीय सहयोगका लागि मेनु प्रयोग गर्नुहोस्।'
+                  )}
                 </Text>
               </View>
               <View style={styles.touristSupportCard}>
                 <MaterialIcons name="sos" size={26} color={Colors.secondary} />
-                <Text style={styles.touristSupportTitle}>Emergency</Text>
-                <Text style={styles.touristSupportDesc}>Instant access to help, police, and local contacts.</Text>
+                <Text style={styles.touristSupportTitle}>{t('Emergency', 'आपतकालीन')}</Text>
+                <Text style={styles.touristSupportDesc}>{t('Instant access to help, police, and local contacts.', 'सहायता, प्रहरी, र स्थानीय सम्पर्कमा तुरुन्त पहुँच।')}</Text>
               </View>
             </View>
           </>
@@ -477,7 +553,7 @@ export default function HomeScreen({ navigation }: any) {
             {/* Welcome */}
             <View style={styles.welcome}>
               <Text style={styles.dateText}>{today}</Text>
-              <Text style={styles.greetText}>Namaste, Pokhara</Text>
+              <Text style={styles.greetText}>{t('Namaste, Pokhara', 'नमस्ते, पोखरा')}</Text>
             </View>
 
             {/* Search */}
@@ -485,7 +561,7 @@ export default function HomeScreen({ navigation }: any) {
               <MaterialIcons name="search" size={22} color={Colors.primary} style={{ opacity: 0.6 }} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="What do you need today?"
+                placeholder={t('What do you need today?', 'आज के चाहिएको छ?')}
                 placeholderTextColor={Colors.outline}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -536,7 +612,7 @@ export default function HomeScreen({ navigation }: any) {
                 ) : (
                   <View style={styles.searchEmptyState}>
                     <MaterialIcons name="search-off" size={18} color={Colors.outline} />
-                    <Text style={styles.searchEmptyText}>No matching services found</Text>
+                    <Text style={styles.searchEmptyText}>{t('No matching services found', 'मिल्ने सेवा भेटिएन')}</Text>
                   </View>
                 )}
               </View>
@@ -547,34 +623,46 @@ export default function HomeScreen({ navigation }: any) {
         {!isTourist && (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Top Stories <Text style={styles.sectionSub}>/ Quick updates</Text></Text>
-              <TouchableOpacity onPress={() => setSelectedStory(storyCards[0])}>
-                <Text style={styles.viewAll}>Open</Text>
+              <Text style={styles.sectionTitle}>{t('Top Stories', 'मुख्य सूचना')} <Text style={styles.sectionSub}>{t('/ Quick updates', '/ ताजा अपडेट')}</Text></Text>
+              <TouchableOpacity onPress={() => navigation.navigate('CitizenPortal')}>
+                <Text style={styles.viewAll}>{t('Open', 'खोल्नुहोस्')}</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storyRow}>
-              {storyCards.map((story, index) => (
-                <TouchableOpacity
-                  key={`${story.title}-${index}`}
-                  activeOpacity={0.9}
-                  style={styles.storyCard}
-                  onPress={() => setSelectedStory(story)}
-                >
-                  <ImageBackground source={{ uri: story.image }} style={styles.storyImage} imageStyle={styles.storyImageClip}>
-                    <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={StyleSheet.absoluteFill} />
-                    <View style={styles.storyTopRow}>
-                      <View style={styles.storyBadge}>
-                        <Text style={styles.storyBadgeText}>{story.wardLabel}</Text>
+            {noticesLoading ? (
+              <View style={styles.noticeEmptyState}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.noticeEmptyText}>{t('Loading notices...', 'सूचना लोड हुँदैछ...')}</Text>
+              </View>
+            ) : storyCards.length ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storyRow}>
+                {storyCards.map((story, index) => (
+                  <TouchableOpacity
+                    key={`${story.title}-${index}`}
+                    activeOpacity={0.9}
+                    style={styles.storyCard}
+                    onPress={() => setSelectedStory(story)}
+                  >
+                    <ImageBackground source={{ uri: story.image }} style={styles.storyImage} imageStyle={styles.storyImageClip}>
+                      <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={StyleSheet.absoluteFill} />
+                      <View style={styles.storyTopRow}>
+                        <View style={styles.storyBadge}>
+                          <Text style={styles.storyBadgeText}>{story.wardLabel}</Text>
+                        </View>
                       </View>
+                    </ImageBackground>
+                    <View style={styles.storyCaption}>
+                      <Text numberOfLines={2} style={styles.storyTitle}>{story.title}</Text>
+                      <Text style={styles.storyMeta}>{story.time}</Text>
                     </View>
-                  </ImageBackground>
-                  <View style={styles.storyCaption}>
-                    <Text numberOfLines={2} style={styles.storyTitle}>{story.title}</Text>
-                    <Text style={styles.storyMeta}>{story.time}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.noticeEmptyState}>
+                <MaterialIcons name="inbox" size={18} color={Colors.outline} />
+                <Text style={styles.noticeEmptyText}>{t('No notices published yet.', 'अहिलेसम्म कुनै सूचना प्रकाशित छैन।')}</Text>
+              </View>
+            )}
           </>
         )}
 
@@ -582,44 +670,75 @@ export default function HomeScreen({ navigation }: any) {
           <>
             {/* Weather */}
             <View style={styles.fullWidthRow}>
-              {/* Weather */}
-              <View style={styles.weatherCard}>
-                <LinearGradient
-                  colors={[Colors.primary, Colors.primaryContainer]}
-                  style={StyleSheet.absoluteFill}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                />
-                <View style={styles.weatherBadge}>
-                  <Text style={styles.weatherBadgeText}>Atmosphere Today</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weatherStrip}>
+                <View style={styles.weatherCard}>
+                  <LinearGradient
+                    colors={[Colors.primary, Colors.primaryContainer]}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  />
+                  <View style={styles.weatherBadge}>
+                    <Text style={styles.weatherBadgeText}>{t('Atmosphere Today', 'आजको मौसम')}</Text>
+                  </View>
+                  <View style={styles.weatherMain}>
+                    <MaterialIcons name={getWeatherIcon(weather.weatherCode, weather.isDay) as any} size={44} color="#fff" />
+                    <View>
+                      <Text style={styles.tempText}>{Math.round(weather.temperature)}°C</Text>
+                      <Text style={styles.condText}>{getWeatherCondition(weather.weatherCode, isNepali)} · Pokhara-6</Text>
+                    </View>
+                    <View style={styles.aqiBox}>
+                      <Text style={styles.aqiLabel}>{t('AQI Index', 'AQI सूचकांक')}</Text>
+                      <Text style={styles.aqiNum}>{Math.round(weather.aqi)}</Text>
+                      <Text style={styles.aqiState}>{getAQIState(weather.aqi, isNepali)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.weatherStats}>
+                    <View style={styles.weatherStat}>
+                      <Text style={styles.weatherStatLabel}>{t('Humidity', 'आर्द्रता')}</Text>
+                      <Text style={styles.weatherStatVal}>{Math.round(weather.humidity)}%</Text>
+                    </View>
+                    <View style={styles.weatherStat}>
+                      <Text style={styles.weatherStatLabel}>{t('UV Index', 'UV सूचकांक')}</Text>
+                      <Text style={styles.weatherStatVal}>{getUVLabel(weather.uvIndex, isNepali)}</Text>
+                    </View>
+                    <View style={styles.weatherStat}>
+                      <Text style={styles.weatherStatLabel}>{t('Visibility', 'दृश्यता')}</Text>
+                      <Text style={styles.weatherStatVal}>{weather.visibilityKm}km</Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.weatherMain}>
-                  <MaterialIcons name={getWeatherIcon(weather.weatherCode, weather.isDay) as any} size={44} color="#fff" />
-                  <View>
-                    <Text style={styles.tempText}>{Math.round(weather.temperature)}°C</Text>
-                    <Text style={styles.condText}>{getWeatherCondition(weather.weatherCode)} · Pokhara-6</Text>
-                  </View>
-                  <View style={styles.aqiBox}>
-                    <Text style={styles.aqiLabel}>AQI Index</Text>
-                    <Text style={styles.aqiNum}>{Math.round(weather.aqi)}</Text>
-                    <Text style={styles.aqiState}>{getAQIState(weather.aqi)}</Text>
-                  </View>
-                </View>
-                <View style={styles.weatherStats}>
-                  <View style={styles.weatherStat}>
-                    <Text style={styles.weatherStatLabel}>Humidity</Text>
-                    <Text style={styles.weatherStatVal}>{Math.round(weather.humidity)}%</Text>
-                  </View>
-                  <View style={styles.weatherStat}>
-                    <Text style={styles.weatherStatLabel}>UV Index</Text>
-                    <Text style={styles.weatherStatVal}>{getUVLabel(weather.uvIndex)}</Text>
-                  </View>
-                  <View style={styles.weatherStat}>
-                    <Text style={styles.weatherStatLabel}>Visibility</Text>
-                    <Text style={styles.weatherStatVal}>{weather.visibilityKm}km</Text>
-                  </View>
-                </View>
-              </View>
 
+                <View style={styles.weatherForecastCard}>
+                  <LinearGradient
+                    colors={[Colors.primary, Colors.primaryContainer]}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  />
+                  <View style={styles.weatherBadge}>
+                    <Text style={styles.weatherBadgeText}>{t('5-Day Forecast', '५ दिनको पूर्वानुमान')}</Text>
+                  </View>
+
+                  {forecastDays.length ? (
+                    <View style={styles.forecastList}>
+                      {forecastDays.map((day) => (
+                        <View key={day.date} style={styles.forecastRow}>
+                          <Text style={styles.forecastDay}>{formatForecastDay(day.date)}</Text>
+                          <View style={styles.forecastIconWrap}>
+                            <MaterialIcons name={getWeatherIcon(day.weatherCode, true) as any} size={16} color="#fff" />
+                          </View>
+                          <Text style={styles.forecastCondition}>{getWeatherCondition(day.weatherCode, isNepali)}</Text>
+                          <Text style={styles.forecastTemp}>{Math.round(day.maxTemp)}° / {Math.round(day.minTemp)}°</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.forecastEmptyState}>
+                      <MaterialIcons name="cloud-off" size={18} color="rgba(255,255,255,0.8)" />
+                      <Text style={styles.forecastEmptyText}>{t('Forecast unavailable right now', 'अहिले पूर्वानुमान उपलब्ध छैन')}</Text>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
             </View>
 
             <View style={styles.fullWidthRow}>
@@ -633,10 +752,10 @@ export default function HomeScreen({ navigation }: any) {
                     <Text style={styles.wardBadgeText}>Ward 09</Text>
                   </View>
                 </View>
-                <Text style={styles.wardTitle}>Ward Presence</Text>
-                <Text style={styles.wardDesc}>Your local representatives are active. Check ward progress.</Text>
-                <TouchableOpacity style={styles.wardBtn}>
-                  <Text style={styles.wardBtnText}>Open Ward Map</Text>
+                <Text style={styles.wardTitle}>{t('Ward Presence', 'वडा उपस्थिति')}</Text>
+                <Text style={styles.wardDesc}>{t('Your local representatives are active. Check ward progress.', 'तपाईंका स्थानीय प्रतिनिधि सक्रिय छन्। वडाको प्रगति हेर्नुहोस्।')}</Text>
+                <TouchableOpacity style={styles.wardBtn} onPress={() => navigation.navigate('WardMap')}>
+                  <Text style={styles.wardBtnText}>{t('Open Ward Map', 'वडा नक्सा खोल्नुहोस्')}</Text>
                   <MaterialIcons name="arrow-forward" size={14} color={Colors.primary} />
                 </TouchableOpacity>
               </View>
@@ -645,71 +764,77 @@ export default function HomeScreen({ navigation }: any) {
         )}
 
         {/* Notices / News */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{isTourist ? 'Travel Stories' : 'Suchana'} <Text style={styles.sectionSub}>/ Notices & News</Text></Text>
-          <TouchableOpacity onPress={() => navigation.navigate('CitizenPortal')}>
-            <Text style={styles.viewAll}>{isTourist ? 'Visitor Guide' : 'View All'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {(() => {
-          const fallbackNotices = [
-            { notice_id: 'fallback-urgent', title: 'Water Supply Interruption', title_ne: 'पानी आपूर्ति बन्द', category: 'URGENT', content: 'Water supply interrupted 8AM-4PM on 2082/06/15.', is_urgent: true },
-            { notice_id: 'fallback-infra', title: 'Road Widening Project', title_ne: 'सडक चौडाइ', category: 'INFRASTRUCTURE', content: 'Prithvi Chowk road widening begins next week.', is_urgent: false },
-            { notice_id: 'fallback-health', title: 'Free Health Camp', title_ne: 'स्वास्थ्य शिविर', category: 'HEALTH', content: 'Free checkup at Ward 9 hall on 2082/06/20.', is_urgent: false },
-            { notice_id: 'fallback-culture', title: 'Lakhe Festival', title_ne: 'लाखे जात्रा', category: 'CULTURE', content: 'Community festival this weekend around Lakeside.', is_urgent: false },
-          ];
-
-          const feed = (notices.length ? notices : fallbackNotices).slice(0, 5);
-          const urgentItem = feed.find((item) => item.is_urgent) || feed[0];
-          const secondaryItems = feed.filter((item) => item.notice_id !== urgentItem?.notice_id).slice(0, 4);
-
-          return (
-            <>
-              <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard} onPress={() => navigation.navigate('CitizenPortal')}>
-                <LinearGradient
-                  colors={[Colors.primary, Colors.primaryContainer]}
-                  style={StyleSheet.absoluteFill}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                />
-                <View style={styles.heroNewsOverlay}>
-                  <View style={styles.heroTagWrap}>
-                    <Text style={styles.heroTag}>{urgentItem?.category || 'NOTICE'}</Text>
-                    <Text style={styles.heroLatest}>{urgentItem?.is_urgent ? 'URGENT' : 'LATEST'}</Text>
-                  </View>
-                  <Text style={styles.heroNewsTitle}>{urgentItem ? (urgentItem.title || urgentItem.title_ne || 'Notice') : 'Latest Notice'}</Text>
-                  <Text style={styles.heroNewsSummary}>{urgentItem?.content || 'Open the notices board to see the latest official updates.'}</Text>
-                </View>
+        {!isTourist && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t('Suchana', 'सूचना')} <Text style={styles.sectionSub}>{t('/ Notices & News', '/ सूचना र समाचार')}</Text></Text>
+              <TouchableOpacity onPress={() => navigation.navigate('CitizenPortal')}>
+                <Text style={styles.viewAll}>{t('View All', 'सबै हेर्नुहोस्')}</Text>
               </TouchableOpacity>
+            </View>
 
-              <View style={styles.newsGrid}>
-                {secondaryItems.map((item) => (
-                  <TouchableOpacity key={item.notice_id} activeOpacity={0.9} style={styles.newsItemCard} onPress={() => navigation.navigate('CitizenPortal')}>
-                    <View style={[styles.newsThumb, { alignItems: 'center', justifyContent: 'center', backgroundColor: item.is_urgent ? '#FEE2E2' : Colors.primaryFixed }]}>
-                      <MaterialIcons
-                        name={(item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'article') as any}
-                        size={22}
-                        color={item.is_urgent ? Colors.secondary : Colors.primary}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text numberOfLines={2} style={styles.newsItemTitle}>{item.title || item.title_ne || 'Notice'}</Text>
-                      <Text numberOfLines={2} style={styles.newsItemTime}>{item.content || 'Official update'}</Text>
+            {(() => {
+              const feed = DEMO_NEWS.slice(0, 5);
+              if (!feed.length) {
+                return (
+                  <View style={styles.noticeEmptyState}>
+                    <MaterialIcons name="newspaper" size={18} color={Colors.outline} />
+                    <Text style={styles.noticeEmptyText}>{t('No notices available.', 'कुनै सूचना उपलब्ध छैन।')}</Text>
+                  </View>
+                );
+              }
+
+              const urgentItem = feed.find((item) => item.is_urgent) || feed[0];
+              const secondaryItems = feed.filter((item) => item.notice_id !== urgentItem?.notice_id).slice(0, 4);
+
+              return (
+                <>
+                  <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                    <LinearGradient
+                      colors={[Colors.primary, Colors.primaryContainer]}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <View style={styles.heroNewsOverlay}>
+                      <View style={styles.heroTagWrap}>
+                        <Text style={styles.heroTag}>{urgentItem?.category || t('NOTICE', 'सूचना')}</Text>
+                        <Text style={styles.heroLatest}>{urgentItem?.is_urgent ? t('URGENT', 'तत्काल') : t('LATEST', 'नयाँ')}</Text>
+                      </View>
+                      <Text style={styles.heroNewsTitle}>{urgentItem ? (isNepali ? (urgentItem.title_ne || urgentItem.title || 'सूचना') : (urgentItem.title || urgentItem.title_ne || 'Notice')) : t('Latest Notice', 'ताजा सूचना')}</Text>
+                      <Text style={styles.heroNewsSummary}>{urgentItem?.content || t('Check the notices board for important updates.', 'महत्त्वपूर्ण अपडेटका लागि सूचना बोर्ड जाँच गर्नुहोस्।')}</Text>
                     </View>
                   </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          );
-        })()}
+
+                  <View style={styles.newsGrid}>
+                    {secondaryItems.map((item) => (
+                      <TouchableOpacity key={item.notice_id} activeOpacity={0.9} style={styles.newsItemCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                        <View style={[styles.newsThumb, { alignItems: 'center', justifyContent: 'center', backgroundColor: item.is_urgent ? '#FEE2E2' : Colors.primaryFixed }]}>
+                          <MaterialIcons
+                            name={(item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'article') as any}
+                            size={22}
+                            color={item.is_urgent ? Colors.secondary : Colors.primary}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text numberOfLines={2} style={styles.newsItemTitle}>{isNepali ? (item.title_ne || item.title || 'सूचना') : (item.title || item.title_ne || 'Notice')}</Text>
+                          <Text numberOfLines={2} style={styles.newsItemTime}>{item.content || t('Official update', 'आधिकारिक अपडेट')}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              );
+            })()}
+          </>
+        )}
 
         {/* E-Sewa Services */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{isTourist ? 'Visitor Services' : 'E-Sewa'} <Text style={styles.sectionSub}>/ Direct</Text></Text>
+          <Text style={styles.sectionTitle}>{isTourist ? t('Visitor Services', 'आगन्तुक सेवा') : 'E-Sewa'} <Text style={styles.sectionSub}>{t('/ Direct', '/ सिधा पहुँच')}</Text></Text>
         </View>
         <View style={isTourist ? styles.touristGrid : styles.servicesGrid}>
-          {(isTourist ? TOURIST_SERVICES : SERVICES).map((s: any) => (
+          {serviceItems.map((s: ServiceItem) => (
             <TouchableOpacity
               key={s.label}
               style={isTourist ? styles.touristServiceCardCompact : styles.serviceCard}
@@ -717,8 +842,8 @@ export default function HomeScreen({ navigation }: any) {
               activeOpacity={0.8}
             >
               <MaterialIcons name={s.icon as any} size={28} color={Colors.primary} />
-              <Text style={styles.serviceLabel}>{s.label}</Text>
-              {isTourist && <Text style={styles.touristServiceDesc}>{s.desc}</Text>}
+              <Text style={styles.serviceLabel}>{isNepali ? s.labelNE : s.label}</Text>
+              {isTourist && <Text style={styles.touristServiceDesc}>{isNepali ? s.descNE : s.desc}</Text>}
             </TouchableOpacity>
           ))}
         </View>
@@ -728,26 +853,26 @@ export default function HomeScreen({ navigation }: any) {
           <View style={styles.digitalCard}>
             <View style={styles.digitalTop}>
               <MaterialIcons name="verified" size={20} color={Colors.goldLight} />
-              <Text style={styles.digitalLabel}>Digital Citizen Card</Text>
+              <Text style={styles.digitalLabel}>{t('Digital Citizen Card', 'डिजिटल नागरिक कार्ड')}</Text>
             </View>
             <Text style={styles.digitalDesc}>
-              Your virtual identity card for quick verification at ward offices.
+              {t('Your virtual identity card for quick verification at ward offices.', 'वडा कार्यालयमा छिटो प्रमाणीकरणका लागि तपाईंको डिजिटल परिचयपत्र।')}
             </Text>
             <TouchableOpacity
               style={styles.qrBtn}
               onPress={() => navigation.navigate('Verify')}
             >
               <MaterialIcons name="qr-code" size={16} color="#fff" />
-              <Text style={styles.qrBtnText}>Show QR Code</Text>
+              <Text style={styles.qrBtnText}>{t('Show QR Code', 'QR कोड देखाउनुहोस्')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.touristGuideCard}>
             <MaterialIcons name="travel-explore" size={20} color={Colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.touristGuideTitle}>Stay connected while exploring.</Text>
+              <Text style={styles.touristGuideTitle}>{t('Stay connected while exploring.', 'अन्वेषण गर्दा पनि सम्पर्कमा रहनुहोस्।')}</Text>
               <Text style={styles.touristGuideDesc}>
-                Use the menu for permits, routes, and local support anytime.
+                {t('Use the menu for permits, routes, and local support anytime.', 'अनुमति, मार्ग, र स्थानीय सहयोगका लागि जुनसुकै बेला मेनु प्रयोग गर्नुहोस्।')}
               </Text>
             </View>
           </View>
@@ -756,21 +881,21 @@ export default function HomeScreen({ navigation }: any) {
         {/* PRATIBIMBA Stats */}
         {!isTourist && stats && (
           <View style={styles.statsCard}>
-            <Text style={styles.statsTitle}>🔒 PRATIBIMBA Live</Text>
+            <Text style={styles.statsTitle}>{t('🔒 PRATIBIMBA Live', '🔒 PRATIBIMBA प्रत्यक्ष')}</Text>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statNum}>{stats.total_documents?.toLocaleString() || '—'}</Text>
-                <Text style={styles.statLbl}>Documents</Text>
+                <Text style={styles.statLbl}>{t('Documents', 'कागजात')}</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statNum}>{stats.issued_today || '—'}</Text>
-                <Text style={styles.statLbl}>Today</Text>
+                <Text style={styles.statLbl}>{t('Today', 'आज')}</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={[styles.statNum, { color: Colors.success }]}>
                   {stats.tampered_alerts === 0 ? '✓' : '⚠'}
                 </Text>
-                <Text style={styles.statLbl}>Integrity</Text>
+                <Text style={styles.statLbl}>{t('Integrity', 'अखण्डता')}</Text>
               </View>
             </View>
           </View>
@@ -784,31 +909,49 @@ export default function HomeScreen({ navigation }: any) {
         animationType="fade"
         onRequestClose={() => setSelectedStory(null)}
       >
-        <TouchableOpacity style={styles.storyModalBackdrop} activeOpacity={1} onPress={() => setSelectedStory(null)}>
-          <TouchableOpacity style={styles.storyModalCard} activeOpacity={1} onPress={() => {}}>
-            <ImageBackground source={{ uri: selectedStory?.image }} style={styles.storyModalImage} imageStyle={styles.storyModalImageClip}>
-              <LinearGradient colors={['rgba(0,0,0,0.12)', 'rgba(0,0,0,0.82)']} style={StyleSheet.absoluteFill} />
-              <View style={styles.storyModalContent}>
-                  <View style={styles.storyModalHeader}>
-                    <Text style={styles.storyModalTag}>{selectedStory?.wardLabel || 'Ward 09'}</Text>
+        <View style={styles.storyModalBackdrop}>
+          <TouchableOpacity
+            style={styles.storyModalDismissLayer}
+            activeOpacity={1}
+            onPress={() => setSelectedStory(null)}
+          />
+
+          <View style={styles.storyModalCard}>
+            <View style={styles.storyModalMediaWrap}>
+              <ImageBackground source={{ uri: selectedStory?.image }} style={styles.storyModalImage} imageStyle={styles.storyModalImageClip}>
+                <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.55)']} style={StyleSheet.absoluteFill} />
+                <View style={styles.storyModalHeader}>
+                  <View style={styles.storyModalTagPill}>
+                    <Text style={styles.storyModalTag}>{selectedStory?.wardLabel || t('Ward 09', 'वडा ०९')}</Text>
+                  </View>
                   <TouchableOpacity style={styles.storyModalClose} onPress={() => setSelectedStory(null)}>
                     <MaterialIcons name="close" size={18} color={Colors.primary} />
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.storyModalTitle}>{selectedStory?.title}</Text>
-                <Text style={styles.storyModalSummary}>{selectedStory?.summary}</Text>
-                <View style={styles.storyModalActions}>
-                  <TouchableOpacity style={styles.storyModalPrimary} onPress={() => { setSelectedStory(null); navigation.navigate('CitizenPortal'); }}>
-                    <Text style={styles.storyModalPrimaryText}>Open notice board</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.storyModalSecondary} onPress={() => setSelectedStory(null)}>
-                    <Text style={styles.storyModalSecondaryText}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </ImageBackground>
-          </TouchableOpacity>
-        </TouchableOpacity>
+              </ImageBackground>
+            </View>
+
+            <ScrollView
+              style={styles.storyModalScroll}
+              contentContainerStyle={styles.storyModalScrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces
+            >
+              <Text style={styles.storyModalTitle}>{selectedStory?.title}</Text>
+              <Text style={styles.storyModalSummary}>{selectedStory?.summary}</Text>
+            </ScrollView>
+
+            <View style={styles.storyModalActions}>
+              <TouchableOpacity style={styles.storyModalPrimary} onPress={() => { setSelectedStory(null); navigation.navigate('CitizenPortal'); }}>
+                <MaterialIcons name="article" size={16} color="#fff" />
+                <Text style={styles.storyModalPrimaryText}>{t('Open notice board', 'सूचना बोर्ड खोल्नुहोस्')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.storyModalSecondary} onPress={() => setSelectedStory(null)}>
+                <Text style={styles.storyModalSecondaryText}>{t('Close', 'बन्द गर्नुहोस्')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
@@ -816,8 +959,8 @@ export default function HomeScreen({ navigation }: any) {
           <TouchableOpacity activeOpacity={1} style={styles.menuSheet}>
             <View style={styles.menuHeader}>
               <View>
-                <Text style={styles.menuKicker}>{isTourist ? 'Tourist menu' : 'Citizen menu'}</Text>
-                <Text style={styles.menuTitle}>{isTourist ? tourist?.name || 'Traveler' : citizen?.name || 'Resident'}</Text>
+                <Text style={styles.menuKicker}>{isTourist ? t('Tourist menu', 'पर्यटक मेनु') : t('Citizen menu', 'नागरिक मेनु')}</Text>
+                <Text style={styles.menuTitle}>{isTourist ? tourist?.name || t('Traveler', 'यात्रु') : citizen?.name || t('Resident', 'निवासी')}</Text>
               </View>
               <TouchableOpacity style={styles.menuClose} onPress={() => setShowMenu(false)}>
                 <MaterialIcons name="close" size={20} color={Colors.primary} />
@@ -834,7 +977,7 @@ export default function HomeScreen({ navigation }: any) {
                 }}
               >
                 <MaterialIcons name={item.icon as any} size={20} color={Colors.primary} />
-                <Text style={styles.menuItemText}>{item.label}</Text>
+                <Text style={styles.menuItemText}>{isNepali ? item.labelNE : item.label}</Text>
                 <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
               </TouchableOpacity>
             ))}
@@ -847,16 +990,16 @@ export default function HomeScreen({ navigation }: any) {
               }}
             >
               <MaterialIcons name="logout" size={20} color={Colors.secondary} />
-              <Text style={styles.menuLogoutText}>Logout</Text>
+              <Text style={styles.menuLogoutText}>{t('Logout', 'लगआउट')}</Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
       {/* Emergency FAB */}
-      <TouchableOpacity style={styles.fab}>
+      <TouchableOpacity style={[styles.fab, { right: 16, bottom: 16 + insets.bottom }]}>
         <MaterialIcons name="sos" size={22} color="#fff" />
-        <Text style={styles.fabText}>Emergency</Text>
+        <Text style={styles.fabText}>{t('Emergency', 'आपतकालीन')}</Text>
       </TouchableOpacity>
 
     </SafeAreaView>
@@ -968,6 +1111,23 @@ const styles = StyleSheet.create({
   sectionTitle: { ...Typography.title, color: Colors.primary },
   sectionSub: { fontWeight: '400', color: Colors.outline },
   viewAll: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  noticeEmptyState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: Radius.xl,
+    paddingVertical: 14,
+    marginBottom: 14,
+  },
+  noticeEmptyText: {
+    fontSize: 12,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '600',
+  },
   storyRow: { gap: 12, paddingRight: 12, paddingBottom: 8, marginBottom: 14 },
   storyCard: {
     width: 96,
@@ -1025,86 +1185,122 @@ const styles = StyleSheet.create({
   },
   storyModalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(12, 20, 18, 0.52)',
+    backgroundColor: 'rgba(12, 20, 18, 0.45)',
     padding: 20,
     justifyContent: 'center',
   },
+  storyModalDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
   storyModalCard: {
-    borderRadius: 40,
+    borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    maxHeight: '84%',
     ...Shadow.lg,
   },
+  storyModalMediaWrap: {
+    padding: 10,
+    paddingBottom: 0,
+  },
   storyModalImage: {
-    minHeight: 340,
-    justifyContent: 'flex-end',
+    minHeight: 180,
+    justifyContent: 'flex-start',
   },
   storyModalImageClip: {
-    borderRadius: 40,
+    borderRadius: 20,
   },
   storyModalContent: {
-    padding: 18,
-    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 18,
+    gap: 12,
+  },
+  storyModalScroll: {
+    maxHeight: 220,
+  },
+  storyModalScrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 10,
+    gap: 12,
   },
   storyModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    padding: 12,
+  },
+  storyModalTagPill: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   storyModalTag: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
   storyModalClose: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: Radius.full,
     backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   storyModalTitle: {
-    color: '#fff',
-    fontSize: 22,
+    color: Colors.primary,
+    fontSize: 21,
     fontWeight: '900',
-    lineHeight: 28,
+    lineHeight: 27,
   },
   storyModalSummary: {
-    color: 'rgba(255,255,255,0.82)',
+    color: Colors.onSurfaceVariant,
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 20,
   },
   storyModalActions: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
+    gap: 8,
+    marginTop: 2,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
   },
   storyModalPrimary: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.primary,
     borderRadius: Radius.full,
     paddingVertical: 12,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   storyModalPrimaryText: {
-    color: Colors.primary,
+    color: '#fff',
     fontSize: 12,
     fontWeight: '800',
   },
   storyModalSecondary: {
-    flex: 0.8,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    flex: 0.65,
+    backgroundColor: Colors.surfaceContainerLow,
     borderRadius: Radius.full,
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: Colors.outlineVariant,
   },
   storyModalSecondaryText: {
-    color: '#fff',
+    color: Colors.primary,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1125,7 +1321,15 @@ const styles = StyleSheet.create({
   noticeLabel: { fontSize: 10, fontWeight: '700', color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.8, textAlign: 'center' },
   noticeLabelUrgent: { color: Colors.secondary },
   fullWidthRow: { marginBottom: 12 },
-  weatherCard: { borderRadius: Radius.xl, padding: 18, overflow: 'hidden', ...Shadow.md },
+  weatherStrip: { gap: 12, paddingRight: 8 },
+  weatherCard: { borderRadius: Radius.xl, padding: 18, overflow: 'hidden', width: 320, ...Shadow.md },
+  weatherForecastCard: {
+    borderRadius: Radius.xl,
+    padding: 18,
+    overflow: 'hidden',
+    width: 320,
+    ...Shadow.md,
+  },
   weatherBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(0,59,90,0.35)',
@@ -1154,6 +1358,49 @@ const styles = StyleSheet.create({
   weatherStat: { flex: 1, alignItems: 'center' },
   weatherStatLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
   weatherStatVal: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  forecastList: { marginTop: 2, gap: 9 },
+  forecastRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+    paddingBottom: 8,
+  },
+  forecastDay: {
+    width: 48,
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  forecastIconWrap: {
+    width: 24,
+    alignItems: 'center',
+  },
+  forecastCondition: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  forecastTemp: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  forecastEmptyState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 22,
+  },
+  forecastEmptyText: {
+    color: 'rgba(255,255,255,0.86)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   wardCard: {
     borderRadius: Radius.xl, padding: 18,
     backgroundColor: Colors.surfaceContainerLowest, ...Shadow.sm,
@@ -1321,11 +1568,13 @@ const styles = StyleSheet.create({
   statNum: { fontSize: 22, fontWeight: '900', color: Colors.primary },
   statLbl: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2 },
   fab: {
-    position: 'absolute', bottom: 104, right: 18,
+    position: 'absolute', bottom: 16, right: 16,
     backgroundColor: Colors.secondary,
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 16, paddingVertical: 12,
     borderRadius: Radius.full, ...Shadow.lg,
+    zIndex: 20,
+    elevation: 14,
   },
   fabText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   menuOverlay: {

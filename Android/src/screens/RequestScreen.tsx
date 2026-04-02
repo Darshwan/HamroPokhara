@@ -11,6 +11,7 @@ import { useStore } from '../store/useStore';
 import { citizenAPI, paymentAPI } from '../api/client';
 import { PDFPreviewModal } from '../components/PDFPreviewModal';
 import { PDFDocumentData } from '../utils/pdfGenerator';
+import AppHeader from '../components/AppHeader';
 
 const DOC_TYPES = [
   { value: 'SIFARIS',               label: 'सिफारिस',        icon: 'description' },
@@ -308,10 +309,13 @@ export default function RequestScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{isTourist ? 'Visitor Services' : 'Core Services'}</Text>
-        <Text style={styles.headerSub}>{isTourist ? 'Permits, travel support, and local help' : 'Official Sifaris & utility payment portal'}</Text>
-      </View>
+      <AppHeader
+        title={isTourist ? 'Visitor Services' : 'Core Services'}
+        showMenu={false}
+        showLang
+        showBack={navigation.canGoBack?.()}
+        onBack={() => navigation.goBack()}
+      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -677,9 +681,6 @@ export default function RequestScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 8 },
-  headerTitle: { fontSize: 24, fontWeight: '900', color: Colors.primary },
-  headerSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 3 },
   content: { padding: 20, paddingBottom: 40 },
   heroCard: {
     backgroundColor: Colors.primaryContainer,

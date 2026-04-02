@@ -9,6 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { citizenAPI, statsAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 export default function CitizenPortalScreen({ navigation }: any) {
   const { citizen } = useStore();
@@ -87,6 +88,7 @@ export default function CitizenPortalScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <AppHeader title={lang === 'ne' ? 'नागरिक पोर्टल' : 'Citizen Portal'} showMenu={false} showLang />
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Citizen Power</Text>
@@ -166,10 +168,10 @@ export default function CitizenPortalScreen({ navigation }: any) {
             <View style={styles.grievanceBtns}>
               <TouchableOpacity
                 style={styles.grievanceBtnPrimary}
-                onPress={() => navigation.navigate('Sewa')}
+                onPress={() => navigation.navigate('Features')}
               >
                 <MaterialIcons name="add-a-photo" size={16} color="#fff" />
-                <Text style={styles.grievanceBtnText}>Upload Photo</Text>
+                <Text style={styles.grievanceBtnText}>Open Report</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.grievanceBtnSecondary}>
                 <MaterialIcons name="my-location" size={16} color="#fff" />

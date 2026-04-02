@@ -7,6 +7,7 @@ import { Camera, CameraView, BarcodeScanningResult } from 'expo-camera';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { verifyAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 const STATUS_UI: Record<string, { icon: string; color: string; bg: string; title: string }> = {
   VALID:          { icon: 'check-circle', color: '#2d7a52', bg: '#d9f2e3', title: '✓ Valid Document' },
@@ -79,10 +80,7 @@ export default function VerifyScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Verify Document</Text>
-        <Text style={styles.headerSub}>कागज प्रमाणीकरण</Text>
-      </View>
+      <AppHeader title="Verify Document" showMenu={false} showLang />
 
       {/* Mode Toggle */}
       <View style={styles.modeToggle}>
@@ -230,9 +228,6 @@ export default function VerifyScreen() {
 
 const styles = StyleSheet.create({
   container:          { flex: 1, backgroundColor: Colors.background },
-  header:             { padding: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant },
-  headerTitle:        { fontSize: 22, fontWeight: '900', color: Colors.primary },
-  headerSub:          { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
   modeToggle:         { flexDirection: 'row', margin: 16, backgroundColor: Colors.surfaceContainerHigh, borderRadius: Radius.full, padding: 4, gap: 4 },
   modeBtn:            { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: Radius.full },
   modeBtnActive:      { backgroundColor: Colors.primary },

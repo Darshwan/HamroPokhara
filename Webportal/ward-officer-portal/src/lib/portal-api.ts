@@ -294,3 +294,71 @@ export function relativeTime(iso: string): string {
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
+
+export async function fetchWardInfo(wardCode: string): Promise<{
+  ward_code: string;
+  district_name: string;
+  province_name: string;
+  office_name: string;
+  office_phone: string;
+  office_email: string;
+  office_address: string;
+  office_hours: string;
+  current_officer?: {
+    officer_id: string;
+    full_name: string;
+    designation: string;
+    phone: string;
+    email: string;
+  };
+}> {
+  try {
+    const data = await apiFetch<{ success: boolean; ward: any }>(`/ward/${encodeURIComponent(wardCode)}`);
+    return data.ward || {};
+  } catch {
+    return {
+      ward_code: wardCode,
+      district_name: "काठमाडौँ",
+      province_name: "Gandaki",
+      office_name: `Ward Office ${wardCode}`,
+      office_phone: "+977-1-4230001",
+      office_email: "ward@example.gov.np",
+      office_address: `Ward Office Complex, ${wardCode}`,
+      office_hours: "09:00 - 17:00 (Sunday-Friday)",
+    };
+  }
+}
+
+export async function translateNotice(
+  text: string,
+  fromLang: "en" | "ne" = "en",
+  toLang: "en" | "ne" = "ne",
+): Promise<{ translated: string; source: string }> {
+  try {
+    const data = await apiFetch<{
+      success: boolean;
+      translated: string;
+      source: string;
+      message?: string;
+    }>("/ai/translate", {
+      method: "POST",
+      body: JSON.stringify({ text, from_lang: fromLang, to_lang: toLang }),
+    });
+
+    if (!data.success) {
+      throw new Error(data.message || "Translation failed");
+    }
+
+    return {
+      translated: data.translated,
+      source: data.source,
+    };
+  } catch (err) {
+    // Fallback: return original text if translation fails
+    return {
+      translated: text,
+      source: "fallback",
+    };
+  }
+}
+

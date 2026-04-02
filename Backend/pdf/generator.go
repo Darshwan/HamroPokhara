@@ -93,42 +93,92 @@ func registerFonts(f *gofpdf.Fpdf, dir string) {
 
 	sysFreeReg := "/usr/share/fonts/truetype/freefont/FreeSerif.ttf"
 	sysFreeBold := "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf"
+	coreReg := ""
+	coreBold := ""
 
-	registered := false
+	npRegistered := false
 	for _, pair := range [][2]string{{notoReg, notoBold}, {freeReg, freeBold}, {sysFreeReg, sysFreeBold}} {
-		if fileExists(pair[0]) && fileExists(pair[1]) {
-			f.AddUTF8Font("NP", "", pair[0])
-			f.AddUTF8Font("NPB", "", pair[1])
-			registered = true
-			break
+		reg := pair[0]
+		bold := pair[1]
+		if !fileExists(reg) {
+			continue
 		}
-	}
-	if !registered {
-		f.SetFont("Helvetica", "", 10)
+		if !fileExists(bold) {
+			bold = reg
+		}
+		f.AddUTF8Font("NP", "", reg)
+		f.AddUTF8Font("NPB", "", bold)
+		coreReg = reg
+		coreBold = bold
+		npRegistered = true
+		break
 	}
 
 	interReg := filepath.Join(dir, "Inter-Regular.ttf")
 	interBold := filepath.Join(dir, "Inter-Bold.ttf")
-	if fileExists(interReg) && fileExists(interBold) {
+	poppReg := "/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf"
+	poppBold := "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf"
+	winNirmalaReg := "C:/Windows/Fonts/Nirmala.ttf"
+	winNirmalaBold := "C:/Windows/Fonts/NirmalaB.ttf"
+	winArialReg := "C:/Windows/Fonts/arial.ttf"
+	winArialBold := "C:/Windows/Fonts/arialbd.ttf"
+
+	if fileExists(interReg) {
+		if !fileExists(interBold) {
+			interBold = interReg
+		}
 		f.AddUTF8Font("LT", "", interReg)
 		f.AddUTF8Font("LTB", "", interBold)
 		return
 	}
 
-	poppReg := "/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf"
-	poppBold := "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf"
-	if fileExists(poppReg) && fileExists(poppBold) {
+	if fileExists(poppReg) {
+		if !fileExists(poppBold) {
+			poppBold = poppReg
+		}
 		f.AddUTF8Font("LT", "", poppReg)
 		f.AddUTF8Font("LTB", "", poppBold)
 		return
 	}
 
-	if fileExists(sysFreeReg) && fileExists(sysFreeBold) {
+	if fileExists(sysFreeReg) {
+		if !fileExists(sysFreeBold) {
+			sysFreeBold = sysFreeReg
+		}
 		f.AddUTF8Font("LT", "", sysFreeReg)
 		f.AddUTF8Font("LTB", "", sysFreeBold)
-	} else {
-		f.SetFont("Helvetica", "", 10)
+		if !npRegistered {
+			f.AddUTF8Font("NP", "", sysFreeReg)
+			f.AddUTF8Font("NPB", "", sysFreeBold)
+		}
+		return
 	}
+
+	if fileExists(winArialReg) {
+		if !fileExists(winArialBold) {
+			winArialBold = winArialReg
+		}
+		f.AddUTF8Font("LT", "", winArialReg)
+		f.AddUTF8Font("LTB", "", winArialBold)
+		if !npRegistered && fileExists(winNirmalaReg) {
+			if !fileExists(winNirmalaBold) {
+				winNirmalaBold = winNirmalaReg
+			}
+			f.AddUTF8Font("NP", "", winNirmalaReg)
+			f.AddUTF8Font("NPB", "", winNirmalaBold)
+		}
+		return
+	}
+
+	if npRegistered {
+		// Reuse Nepali-capable font for Latin aliases as a safe fallback.
+		f.AddUTF8Font("LT", "", coreReg)
+		f.AddUTF8Font("LTB", "", coreBold)
+		return
+	}
+
+	// Final fallback when no TTF is available anywhere.
+	f.SetFont("Helvetica", "", 10)
 }
 
 func drawBorder(f *gofpdf.Fpdf, y float64) float64 {

@@ -397,7 +397,7 @@ func GetCitizenDocuments(db *database.DB) fiber.Handler {
 				&d.CreatedAt, &d.WardCode, &d.Purpose); err != nil {
 				continue
 			}
-			d.QRData = fmt.Sprintf("verify.pratibimba.gov.np/%s", d.DTID)
+			d.QRData = verificationURLForDTID(d.DTID)
 			docs = append(docs, d)
 		}
 

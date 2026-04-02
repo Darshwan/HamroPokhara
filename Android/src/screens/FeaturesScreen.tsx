@@ -10,9 +10,9 @@ import * as Location from 'expo-location';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import api from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 const { width } = Dimensions.get('window');
-const HALF = (width - 52) / 2;
 
 // Feature tile config
 const TILES = [
@@ -40,6 +40,7 @@ export default function FeaturesScreen({ navigation }: any) {
 
     return (
         <SafeAreaView style={s.container}>
+            <AppHeader title={lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'} showMenu={false} showLang />
             {/* Header */}
             <View style={s.header}>
                 <Text style={s.headerTitle}>{lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'}</Text>
@@ -829,20 +830,22 @@ function TaxModal({ onClose, citizen, lang }: any) {
 function FeatureModal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
     return (
         <Modal animationType="slide" transparent onRequestClose={onClose}>
-            <View style={mStyles.overlay}>
-                <View style={mStyles.sheet}>
-                    <View style={mStyles.sheetHandle} />
+            <TouchableOpacity style={mStyles.overlay} activeOpacity={1} onPress={onClose}>
+                <TouchableOpacity style={mStyles.sheet} activeOpacity={1} onPress={() => {}}>
                     <View style={mStyles.sheetHeader}>
-                        <Text style={mStyles.sheetTitle}>{title}</Text>
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                            <Text style={mStyles.sheetTitle}>{title}</Text>
+                            <Text style={mStyles.sheetSub}>Tap outside or use the exit icon to close.</Text>
+                        </View>
                         <TouchableOpacity style={mStyles.closeBtn} onPress={onClose}>
                             <MaterialIcons name="close" size={18} color={Colors.onSurfaceVariant} />
                         </TouchableOpacity>
                     </View>
-                    <ScrollView showsVerticalScrollIndicator={false}>
+                    <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={mStyles.sheetBody}>
                         {children}
                     </ScrollView>
-                </View>
-            </View>
+                </TouchableOpacity>
+            </TouchableOpacity>
         </Modal>
     );
 }
@@ -862,19 +865,29 @@ const s = StyleSheet.create({
     headerTitle: { fontSize: 20, fontWeight: '800', color: Colors.primary },
     headerSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
     scroll: { padding: 16, paddingBottom: 40 },
-    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    tile: { width: HALF, borderRadius: 18, padding: 16, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.05)' },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+    tile: {
+        width: '48%',
+        marginBottom: 12,
+        borderRadius: 18,
+        padding: 16,
+        borderWidth: 0.5,
+        borderColor: 'rgba(0,0,0,0.05)',
+        minHeight: 104,
+        justifyContent: 'space-between',
+    },
     tileIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
     tileLabel: { fontSize: 13, fontWeight: '700', lineHeight: 18 },
 });
 
 const mStyles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, maxHeight: '88%' },
-    sheetHandle: { width: 40, height: 4, backgroundColor: Colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-    sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-    sheetTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary, flex: 1 },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.52)', justifyContent: 'center', padding: 18 },
+    sheet: { backgroundColor: '#fff', borderRadius: 24, padding: 18, maxHeight: '88%', ...Shadow.lg },
+    sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 },
+    sheetTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary, flex: 1, lineHeight: 22 },
+    sheetSub: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 4, lineHeight: 16 },
     closeBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
+    sheetBody: { paddingBottom: 4 },
     fieldLabel: { fontSize: 10, fontWeight: '700', color: Colors.primary, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8, marginTop: 12 },
     input: { backgroundColor: Colors.surfaceContainerLow, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, fontSize: 13, color: Colors.onSurface },
     catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, marginRight: 7 },

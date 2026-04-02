@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -150,7 +149,8 @@ func GetRequestStatus(db *database.DB) fiber.Handler {
 		// If approved — include DTID and QR data
 		if req.Status == "APPROVED" && req.DTID != "" {
 			resp.DTID = req.DTID
-			resp.QRData = fmt.Sprintf("https://verify.pratibimba.gov.np/%s", req.DTID)
+			resp.QRData = verificationURLForDTID(req.DTID)
+			resp.QRCode, _ = verificationQRCodeDataURL(resp.QRData)
 		}
 
 		return c.Status(200).JSON(resp)

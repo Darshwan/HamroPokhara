@@ -18,6 +18,7 @@ import Toast from 'react-native-toast-message';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { authAPI, healthCheck } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 // Runtime require avoids the resolver edge case on the shared hybrid OCR screen.
 const OCRHybridScreen = require('./OCRHybridScreen').default;
@@ -344,14 +345,16 @@ export default function LoginScreen({ navigation, route }: any) {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <AppHeader
+        title={isTourist ? 'Tourist Login' : 'Citizen Login'}
+        showMenu={false}
+        showLang
+        showBack
+        onBack={() => navigation.goBack()}
+      />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.85}>
-            <MaterialIcons name="arrow-back" size={20} color={Colors.primary} />
-            <Text style={styles.backBtnText}>Go Back</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.connectionChip,

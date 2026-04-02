@@ -65,6 +65,7 @@ func main() {
 	app.Post("/ai/expand-purpose", handlers.ExpandPurpose(db))
 	app.Post("/ai/assistant", handlers.GovernmentAssistant(db))
 	app.Get("/ai/suggestions", handlers.AssistantSuggestions())
+	app.Post("/ai/translate", handlers.TranslateText(db))
 
 	// ── Citizen Routes ─────────────────────────────────────
 	citizen := app.Group("/citizen")
