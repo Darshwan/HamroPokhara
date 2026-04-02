@@ -36,7 +36,7 @@ func main() {
 		AppName:      cfg.AppName + " v" + cfg.AppVersion,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
-		BodyLimit:    1 * 1024 * 1024, // 1MB max
+		BodyLimit:    100 * 1024 * 1024, // 100MB max (for OCR base64 images)
 		ErrorHandler: handlers.GlobalErrorHandler,
 	})
 
@@ -61,6 +61,11 @@ func main() {
 		})
 	})
 
+	// ── AI Routes ───────────────────────────────────────────
+	app.Post("/ai/expand-purpose", handlers.ExpandPurpose(db))
+	app.Post("/ai/assistant", handlers.GovernmentAssistant(db))
+	app.Get("/ai/suggestions", handlers.AssistantSuggestions())
+
 	// ── Citizen Routes ─────────────────────────────────────
 	citizen := app.Group("/citizen")
 	citizen.Use(limiter.New(limiter.Config{
@@ -68,6 +73,9 @@ func main() {
 	}))
 	citizen.Post("/request", handlers.SubmitRequest(db))
 	citizen.Get("/request/:requestID", handlers.GetRequestStatus(db))
+	citizen.Post("/ocr", handlers.ProcessOCR(db))
+	citizen.Post("/preview-pdf", handlers.PreviewDocumentPDF(db))
+	citizen.Get("/download-pdf/:request_id", handlers.DownloadDocumentPDF(db))
 
 	// ── Officer Routes (JWT protected) ─────────────────────
 	app.Post("/officer/login", handlers.OfficerLogin(db, cfg.JWTSecret))
@@ -105,6 +113,22 @@ func main() {
 		handlers.VerifyDocument(db),
 	)
 	app.Get("/document/pdf/:dtid", pdfhandlers.DownloadPDF(db))
+
+	// ── Civic Feature Routes ──────────────────────────────────────
+	app.Get("/blood/donors", handlers.GetBloodDonors(db))
+	app.Post("/blood/register", handlers.RegisterBloodDonor(db))
+	app.Get("/tourism", handlers.GetTourismListings(db))
+	app.Get("/lost-found", handlers.GetLostFound(db))
+	app.Post("/lost-found", handlers.ReportLostFound(db))
+	app.Post("/volunteer/register", handlers.RegisterVolunteer(db))
+	app.Post("/feedback", handlers.SubmitOfficerFeedback(db))
+	app.Get("/feedback/officer/:officerID", handlers.GetOfficerRating(db))
+	app.Get("/hearing/:wardCode", handlers.GetHearings(db))
+	app.Post("/hearing/vote", handlers.VoteOnHearing(db))
+	app.Post("/krishi/apply", handlers.ApplyKrishiAnudan(db))
+	app.Post("/sign", handlers.SignDocument(db))
+	app.Post("/tax/pay", handlers.InitiateTaxPayment(db))
+	app.Post("/ai/chat", handlers.AIChat(db))
 
 	// ── Ministry Routes ────────────────────────────────────
 	ministry := app.Group("/ministry")

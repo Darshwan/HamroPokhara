@@ -37,8 +37,13 @@ func Connect(databaseURL string) (*DB, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
+	db := &DB{Pool: pool}
+	if err := db.ensureCoreAuthSchema(ctx); err != nil {
+		return nil, err
+	}
+
 	log.Println("✅ PostgreSQL connected")
-	return &DB{Pool: pool}, nil
+	return db, nil
 }
 
 func (db *DB) Close() {

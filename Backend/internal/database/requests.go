@@ -30,19 +30,25 @@ func (db *DB) GetRequestByID(ctx context.Context, requestID string) (*models.Ser
 	var r models.ServiceRequest
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, request_id, citizen_nid, citizen_name, citizen_phone,
+		       COALESCE(citizen_dob,''), COALESCE(citizen_gender,''), COALESCE(citizen_address,''),
+		       COALESCE(father_name,''), COALESCE(mother_name,''),
 		       document_type, purpose, additional_info, ward_code,
-		       COALESCE(assigned_officer,''), status,
-		       COALESCE(rejection_reason,''), COALESCE(dtid,''),
-		       submitted_at, reviewed_at, completed_at,
+		       COALESCE(assigned_officer,''), COALESCE(approved_by_officer_id,''), status,
+		       COALESCE(rejection_reason,''), COALESCE(dtid,''), COALESCE(document_hash,''),
+		       COALESCE(issued_date_bs,''), COALESCE(issued_time_np,''), COALESCE(valid_until_bs,''),
+		       submitted_at, reviewed_at, approved_at, completed_at, COALESCE(issued_at, NOW()),
 		       COALESCE(ip_address,'')
 		FROM service_requests
 		WHERE request_id = $1 LIMIT 1
 	`, requestID).Scan(
 		&r.ID, &r.RequestID, &r.CitizenNID, &r.CitizenName, &r.CitizenPhone,
+		&r.CitizenDOB, &r.CitizenGender, &r.CitizenAddress,
+		&r.FatherName, &r.MotherName,
 		&r.DocumentType, &r.Purpose, &r.AdditionalInfo, &r.WardCode,
-		&r.AssignedOfficer, &r.Status,
-		&r.RejectionReason, &r.DTID,
-		&r.SubmittedAt, &r.ReviewedAt, &r.CompletedAt,
+		&r.AssignedOfficer, &r.ApprovedByOfficerID, &r.Status,
+		&r.RejectionReason, &r.DTID, &r.DocumentHash,
+		&r.IssuedDateBS, &r.IssuedTimeNP, &r.ValidUntilBS,
+		&r.SubmittedAt, &r.ReviewedAt, &r.ApprovedAt, &r.CompletedAt, &r.IssuedAt,
 		&r.IPAddress,
 	)
 	if err != nil {
@@ -52,6 +58,11 @@ func (db *DB) GetRequestByID(ctx context.Context, requestID string) (*models.Ser
 		return nil, fmt.Errorf("get request: %w", err)
 	}
 	return &r, nil
+}
+
+// GetServiceRequest is an alias for GetRequestByID for consistency
+func (db *DB) GetServiceRequest(ctx context.Context, requestID string) (*models.ServiceRequest, error) {
+	return db.GetRequestByID(ctx, requestID)
 }
 
 func (db *DB) GetPendingRequestsByWard(ctx context.Context, wardCode string) ([]models.ServiceRequest, error) {

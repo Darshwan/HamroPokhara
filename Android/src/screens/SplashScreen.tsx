@@ -1,15 +1,24 @@
 import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Dimensions, ImageBackground, StatusBar,
+  Dimensions, StatusBar, Modal, ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius } from '../constants/theme';
+import { useStore } from '../store/useStore';
 
 const { width, height } = Dimensions.get('window');
 const POKHARA_LAT = 28.2096;
 const POKHARA_LON = 83.9856;
+
+const LANGUAGES = [
+  { code: 'ne', label: 'नेपाली (Nepali)' },
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिन्दी (Hindi)' },
+  { code: 'zh', label: '中文 (Chinese)' },
+  { code: 'fr', label: 'Français' },
+];
 
 function getAqiLabel(aqi: number): string {
   if (aqi <= 50) return 'Good';
@@ -20,8 +29,10 @@ function getAqiLabel(aqi: number): string {
 }
 
 export default function SplashScreen({ navigation }: any) {
+  const { language, setLanguage } = useStore();
   const [tempText, setTempText] = React.useState('18°C');
   const [aqiText, setAqiText] = React.useState('Good');
+  const [showLanguageSheet, setShowLanguageSheet] = React.useState(false);
 
   useEffect(() => {
     const loadAtmosphere = async () => {
@@ -82,9 +93,9 @@ export default function SplashScreen({ navigation }: any) {
         <View style={styles.municipalBadge}>
           <Text style={styles.municipalText}>Municipal Excellence</Text>
         </View>
-        <View style={styles.langIcon}>
+        <TouchableOpacity style={styles.langIcon} activeOpacity={0.85} onPress={() => setShowLanguageSheet(true)}>
           <MaterialIcons name="language" size={22} color="#fff" />
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Main Content */}
@@ -118,7 +129,7 @@ export default function SplashScreen({ navigation }: any) {
       <View style={styles.cta}>
         <TouchableOpacity
           style={styles.getStartedBtn}
-          onPress={() => navigation.navigate('Language')}
+          onPress={() => navigation.navigate('ContinueAs')}
           activeOpacity={0.85}
         >
           <Text style={styles.getStartedText}>Get Started</Text>
@@ -128,6 +139,38 @@ export default function SplashScreen({ navigation }: any) {
           Official Application of Pokhara Metropolitan City
         </Text>
       </View>
+
+      <Modal visible={showLanguageSheet} transparent animationType="fade" onRequestClose={() => setShowLanguageSheet(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowLanguageSheet(false)}>
+          <TouchableOpacity style={styles.modalCard} activeOpacity={1}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Language</Text>
+              <TouchableOpacity onPress={() => setShowLanguageSheet(false)} style={styles.modalCloseBtn}>
+                <MaterialIcons name="close" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
+              {LANGUAGES.map((item) => {
+                const isSelected = language === item.code;
+                return (
+                  <TouchableOpacity
+                    key={item.code}
+                    style={[styles.langRow, isSelected && styles.langRowSelected]}
+                    onPress={() => {
+                      setLanguage(item.code);
+                      setShowLanguageSheet(false);
+                    }}
+                  >
+                    <Text style={[styles.langRowText, isSelected && styles.langRowTextSelected]}>{item.label}</Text>
+                    {isSelected && <MaterialIcons name="check" size={18} color={Colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -200,5 +243,60 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)', fontSize: 10,
     fontWeight: '700', letterSpacing: 1.5,
     textTransform: 'uppercase', textAlign: 'center', marginTop: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: Radius.xl,
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  langRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: Radius.md,
+    marginBottom: 6,
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  langRowSelected: {
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryFixed,
+  },
+  langRowText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.onSurface,
+  },
+  langRowTextSelected: {
+    color: Colors.primary,
   },
 });

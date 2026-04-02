@@ -5,7 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
-import { Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import SplashScreen    from './src/screens/SplashScreen';
@@ -19,6 +19,8 @@ import VerifyScreen    from './src/screens/VerifyScreen';
 import ProfileScreen   from './src/screens/ProfileScreen';
 import SewaScreen from './src/screens/SewaScreen';
 import CitizenPortalScreen from './src/screens/CitizenPortalScreen';
+import GovernmentAssistantScreen from './src/screens/GovernmentAssistantScreen';
+import FeaturesScreen from './src/screens/FeaturesScreen';
 
 import { Colors } from './src/constants/theme';
 import { useStore } from './src/store/useStore';
@@ -28,26 +30,22 @@ const Tab   = createBottomTabNavigator();
 
 // ── Bottom Tab Navigator (shown after login) ──────────────────
 function MainTabs() {
+  const { language } = useStore();
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: true,
         tabBarStyle: {
-          backgroundColor: 'rgba(255,255,255,0.95)',
-          borderTopColor: '#e6e9e8',
-          borderTopWidth: 1,
-          height: 80,
-          paddingBottom: 20,
-          paddingTop: 8,
+          ...styles.tabBar,
         },
+        tabBarItemStyle: styles.tabItem,
+        tabBarIconStyle: styles.tabIcon,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.outline,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '700',
-          letterSpacing: 0.8,
-          textTransform: 'uppercase',
-        },
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarActiveBackgroundColor: 'rgba(0,59,90,0.08)',
       }}
     >
       <Tab.Screen
@@ -57,7 +55,7 @@ function MainTabs() {
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons
-              name={focused ? 'home' : 'home'}
+              name={focused ? 'home' : 'home-filled'}
               size={24} color={color}
             />
           ),
@@ -67,9 +65,9 @@ function MainTabs() {
         name="Request"
         component={RequestScreen}
         options={{
-          tabBarLabel: 'Sifaris',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="description" size={24} color={color} />
+          tabBarLabel: 'Services',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'apps' : 'apps'} size={22} color={color} />
           ),
         }}
       />
@@ -77,9 +75,9 @@ function MainTabs() {
         name="Track"
         component={TrackScreen}
         options={{
-          tabBarLabel: 'Track',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="track-changes" size={24} color={color} />
+          tabBarLabel: 'Tracker',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'timeline' : 'show-chart'} size={22} color={color} />
           ),
         }}
       />
@@ -87,9 +85,27 @@ function MainTabs() {
         name="Verify"
         component={VerifyScreen}
         options={{
-          tabBarLabel: 'Verify',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="qr-code-scanner" size={24} color={color} />
+          tabBarLabel: 'Wallet',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'account-balance-wallet' : 'account-balance-wallet'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Features"
+        component={FeaturesScreen}
+        options={{
+          tabBarLabel: language === 'ne' ? 'सेवाहरू' : 'Services',
+          tabBarIcon: ({ color }) => <MaterialIcons name="apps" size={24} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Assistant"
+        component={GovernmentAssistantScreen}
+        options={{
+          tabBarLabel: 'Assistant',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'smart-toy' : 'smart-toy'} size={22} color={color} />
           ),
         }}
       />
@@ -98,8 +114,8 @@ function MainTabs() {
         component={ProfileScreen}
         options={{
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="person" size={24} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
           ),
         }}
       />
@@ -107,8 +123,44 @@ function MainTabs() {
   );
 }
 
+const styles = StyleSheet.create({
+  tabBar: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 10,
+    height: 72,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopWidth: 0,
+    borderWidth: 1,
+    borderColor: '#e6e9e8',
+    paddingTop: 8,
+    paddingBottom: 10,
+    shadowColor: '#003b5a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  tabItem: {
+    borderRadius: 14,
+    marginHorizontal: 2,
+    marginVertical: 2,
+  },
+  tabIcon: {
+    marginTop: 2,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+    marginBottom: 2,
+  },
+});
+
 export default function App() {
-  const { isLoggedIn, isGuest, loadFromStorage } = useStore();
+  const { isLoggedIn, isGuest, isTourist, loadFromStorage } = useStore();
 
   useEffect(() => {
     loadFromStorage();
@@ -119,7 +171,7 @@ export default function App() {
       <SafeAreaProvider>
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {!(isLoggedIn || isGuest) ? (
+            {!(isLoggedIn || isGuest || isTourist) ? (
               // ── Onboarding Flow ───────────────────────────────
               <>
                 <Stack.Screen name="Splash"      component={SplashScreen} />

@@ -32,6 +32,17 @@ type Officer struct {
 	CreatedAt    time.Time `db:"created_at"    json:"created_at"`
 }
 
+// Ward represents ward office details for PDF generation
+type Ward struct {
+	WardCode     string `db:"ward_code"     json:"ward_code"`
+	WardNumber   string `db:"ward_number"   json:"ward_number"`
+	DistrictName string `db:"district_name" json:"district_name"`
+	ProvinceName string `db:"province_name" json:"province_name"`
+	OfficeName   string `db:"office_name"   json:"office_name"`
+	OfficePhone  string `db:"office_phone"  json:"office_phone"`
+	OfficeEmail  string `db:"office_email"  json:"office_email"`
+}
+
 type LedgerEntry struct {
 	ID           int64        `db:"id"            json:"id"`
 	DTID         string       `db:"dtid"          json:"dtid"`
@@ -50,24 +61,36 @@ type LedgerEntry struct {
 }
 
 type ServiceRequest struct {
-	ID              int64      `db:"id"               json:"id"`
-	RequestID       string     `db:"request_id"       json:"request_id"`
-	CitizenNID      string     `db:"citizen_nid"      json:"citizen_nid"`
-	CitizenName     string     `db:"citizen_name"     json:"citizen_name"`
-	CitizenPhone    string     `db:"citizen_phone"    json:"citizen_phone,omitempty"`
-	DocumentType    string     `db:"document_type"    json:"document_type"`
-	Purpose         string     `db:"purpose"          json:"purpose"`
-	AdditionalInfo  string     `db:"additional_info"  json:"additional_info,omitempty"`
-	WardCode        string     `db:"ward_code"        json:"ward_code"`
-	OCRRawData      string     `db:"ocr_raw_data"     json:"ocr_raw_data,omitempty"`
-	AssignedOfficer string     `db:"assigned_officer" json:"assigned_officer,omitempty"`
-	Status          string     `db:"status"           json:"status"`
-	RejectionReason string     `db:"rejection_reason" json:"rejection_reason,omitempty"`
-	DTID            string     `db:"dtid"             json:"dtid,omitempty"`
-	SubmittedAt     time.Time  `db:"submitted_at"     json:"submitted_at"`
-	ReviewedAt      *time.Time `db:"reviewed_at"      json:"reviewed_at,omitempty"`
-	CompletedAt     *time.Time `db:"completed_at"     json:"completed_at,omitempty"`
-	IPAddress       string     `db:"ip_address"       json:"ip_address,omitempty"`
+	ID                  int64      `db:"id"               json:"id"`
+	RequestID           string     `db:"request_id"       json:"request_id"`
+	CitizenNID          string     `db:"citizen_nid"      json:"citizen_nid"`
+	CitizenName         string     `db:"citizen_name"     json:"citizen_name"`
+	CitizenPhone        string     `db:"citizen_phone"    json:"citizen_phone,omitempty"`
+	CitizenDOB          string     `db:"citizen_dob"      json:"citizen_dob,omitempty"`
+	CitizenGender       string     `db:"citizen_gender"   json:"citizen_gender,omitempty"`
+	CitizenAddress      string     `db:"citizen_address"  json:"citizen_address,omitempty"`
+	FatherName          string     `db:"father_name"      json:"father_name,omitempty"`
+	MotherName          string     `db:"mother_name"      json:"mother_name,omitempty"`
+	DocumentType        string     `db:"document_type"    json:"document_type"`
+	Purpose             string     `db:"purpose"          json:"purpose"`
+	AdditionalInfo      string     `db:"additional_info"  json:"additional_info,omitempty"`
+	WardCode            string     `db:"ward_code"        json:"ward_code"`
+	OCRRawData          string     `db:"ocr_raw_data"     json:"ocr_raw_data,omitempty"`
+	AssignedOfficer     string     `db:"assigned_officer" json:"assigned_officer,omitempty"`
+	ApprovedByOfficerID string     `db:"approved_by_officer_id" json:"approved_by_officer_id,omitempty"`
+	Status              string     `db:"status"           json:"status"`
+	RejectionReason     string     `db:"rejection_reason" json:"rejection_reason,omitempty"`
+	DTID                string     `db:"dtid"             json:"dtid,omitempty"`
+	DocumentHash        string     `db:"document_hash"    json:"document_hash,omitempty"`
+	IssuedDateBS        string     `db:"issued_date_bs"   json:"issued_date_bs,omitempty"`
+	IssuedTimeNP        string     `db:"issued_time_np"   json:"issued_time_np,omitempty"`
+	ValidUntilBS        string     `db:"valid_until_bs"   json:"valid_until_bs,omitempty"`
+	SubmittedAt         time.Time  `db:"submitted_at"     json:"submitted_at"`
+	ReviewedAt          *time.Time `db:"reviewed_at"      json:"reviewed_at,omitempty"`
+	ApprovedAt          *time.Time `db:"approved_at"      json:"approved_at,omitempty"`
+	CompletedAt         *time.Time `db:"completed_at"     json:"completed_at,omitempty"`
+	IssuedAt            time.Time  `db:"issued_at"        json:"issued_at"`
+	IPAddress           string     `db:"ip_address"       json:"ip_address,omitempty"`
 }
 
 type AccessLogEntry struct {
@@ -80,6 +103,16 @@ type AccessLogEntry struct {
 	IPAddress       string    `db:"ip_address"       json:"ip_address"`
 	ResponseMS      int       `db:"response_ms"      json:"response_ms"`
 	QueriedAt       time.Time `db:"queried_at"       json:"queried_at"`
+}
+
+type AIChatLog struct {
+	ID         int64     `db:"id" json:"id"`
+	SessionID  string    `db:"session_id" json:"session_id"`
+	CitizenNID string    `db:"citizen_nid" json:"citizen_nid"`
+	Query      string    `db:"query" json:"query"`
+	Response   string    `db:"response" json:"response"`
+	Language   string    `db:"language" json:"language"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
 }
 
 // ── Request Payloads (citizen → backend) ────────────────────

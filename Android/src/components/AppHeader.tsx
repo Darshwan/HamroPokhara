@@ -1,0 +1,126 @@
+import React from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  StatusBar,
+} from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Radius, Typography } from '../constants/theme';
+
+interface Props {
+  title?:       string;
+  showMenu?:    boolean;
+  showNotif?:   boolean;
+  showBack?:    boolean;
+  showLang?:    boolean;
+  onMenu?:      () => void;
+  onBack?:      () => void;
+  onNotif?:     () => void;
+  onLang?:      () => void;
+  rightContent?: React.ReactNode;
+  transparent?: boolean;
+}
+
+export default function AppHeader({
+  title       = 'Hamro Pokhara',
+  showMenu    = true,
+  showNotif   = false,
+  showBack    = false,
+  showLang    = true,
+  onMenu,
+  onBack,
+  onNotif,
+  onLang,
+  rightContent,
+  transparent = false,
+}: Props) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View
+      style={[
+        h.outer,
+        { paddingTop: insets.top + 8 },
+        transparent && h.transparent,
+      ]}
+    >
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
+      <View style={h.inner}>
+        {/* Left side */}
+        <View style={h.left}>
+          {showBack && (
+            <TouchableOpacity style={h.iconBtn} onPress={onBack}>
+              <MaterialIcons name="arrow-back" size={22} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+          {showMenu && !showBack && (
+            <TouchableOpacity style={h.iconBtn} onPress={onMenu}>
+              <MaterialIcons name="menu" size={22} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+          <Text style={h.title}>{title}</Text>
+        </View>
+
+        {/* Right side */}
+        <View style={h.right}>
+          {showLang && (
+            <TouchableOpacity style={h.iconBtn} onPress={onLang}>
+              <MaterialIcons name="language" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+          {showNotif && (
+            <TouchableOpacity style={h.iconBtn} onPress={onNotif}>
+              <MaterialIcons name="notifications-none" size={22} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+          {rightContent}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const h = StyleSheet.create({
+  outer: {
+    backgroundColor: 'rgba(248,250,249,0.97)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.outlineVariant,
+    // Subtle blur effect via opacity
+  },
+  transparent: {
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
+  },
+  inner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  left: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  right: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  title: {
+    ...Typography.h3,
+    color: Colors.primary,
+  },
+});

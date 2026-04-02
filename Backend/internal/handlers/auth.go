@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,7 +30,12 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 			// The NID number (always required)
 			SecondaryValue string `json:"secondary_value"`
 			// Citizenship no / License no / etc (optional)
-			DeviceInfo string `json:"device_info"`
+			NID              string `json:"nid"`
+			IDNumber         string `json:"id_number"`
+			CitizenshipNo    string `json:"citizenship_no"`
+			CitizenshipNoAlt string `json:"citizenshipNo"`
+			DocNumber        string `json:"doc_number"`
+			DeviceInfo       string `json:"device_info"`
 		}
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{
@@ -41,7 +47,44 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 		// Normalize
 		req.PrimaryValue = strings.TrimSpace(req.PrimaryValue)
 		req.SecondaryValue = strings.TrimSpace(req.SecondaryValue)
+		req.NID = strings.TrimSpace(req.NID)
+		req.IDNumber = strings.TrimSpace(req.IDNumber)
+		req.CitizenshipNo = strings.TrimSpace(req.CitizenshipNo)
+		req.CitizenshipNoAlt = strings.TrimSpace(req.CitizenshipNoAlt)
+		req.DocNumber = strings.TrimSpace(req.DocNumber)
 		req.IDType = strings.ToUpper(req.IDType)
+
+		// Backward-compatible payload aliases from mobile/client forms.
+		if req.PrimaryValue == "" {
+			switch {
+			case req.NID != "":
+				req.PrimaryValue = req.NID
+				if req.IDType == "" {
+					req.IDType = "NID"
+				}
+			case req.IDNumber != "":
+				req.PrimaryValue = req.IDNumber
+			case req.CitizenshipNo != "":
+				req.PrimaryValue = req.CitizenshipNo
+				if req.IDType == "" {
+					req.IDType = "CITIZENSHIP"
+				}
+			case req.CitizenshipNoAlt != "":
+				req.PrimaryValue = req.CitizenshipNoAlt
+				if req.IDType == "" {
+					req.IDType = "CITIZENSHIP"
+				}
+			case req.DocNumber != "":
+				req.PrimaryValue = req.DocNumber
+			}
+		}
+		if req.SecondaryValue == "" {
+			if req.CitizenshipNo != "" {
+				req.SecondaryValue = req.CitizenshipNo
+			} else if req.CitizenshipNoAlt != "" {
+				req.SecondaryValue = req.CitizenshipNoAlt
+			}
+		}
 		if req.IDType == "" {
 			req.IDType = "NID"
 		}
@@ -105,8 +148,10 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 		// ── Not in database → DEMO MODE fallback ──────────────
 		// For hackathon: if citizen not found, create a demo session
 		// In production: return 401 immediately
+		demoMode := false
 		if err != nil {
 			if os.Getenv("DEMO_MODE") == "true" || os.Getenv("ENV") == "development" {
+				demoMode = true
 				log.Printf("[Auth] Citizen not found, using demo mode for NID: %s", req.PrimaryValue)
 				// Create demo profile
 				profile.NID = req.PrimaryValue
@@ -149,6 +194,7 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 
 		return c.Status(200).JSON(fiber.Map{
 			"success":      true,
+			"demo_mode":    demoMode,
 			"session_id":   sessionID,
 			"session_type": "CITIZEN",
 			"citizen": fiber.Map{
@@ -164,7 +210,12 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 				"gender":         profile.Gender,
 			},
 			"expires_at": expiresAt,
-			"message":    "Login successful",
+			"message": func() string {
+				if demoMode {
+					return "Demo login successful"
+				}
+				return "Login successful"
+			}(),
 		})
 	}
 }
@@ -275,16 +326,18 @@ func GuestSession(db *database.DB) fiber.Handler {
 func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		var req struct {
-			ImageBase64  string `json:"image_base64"`
-			DocumentType string `json:"document_type"`
+			ImageBase64   string `json:"image_base64"`   // optional client photo for UI preview
+			ExtractedText string `json:"extracted_text"` // required client OCR output
+			DocumentType  string `json:"document_type"`
 			// NID | CITIZENSHIP | DRIVING_LICENSE | PASSPORT
 		}
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
 		}
 
-		if req.ImageBase64 == "" {
-			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Image required"})
+		ocrText := strings.TrimSpace(req.ExtractedText)
+		if ocrText == "" {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "extracted_text is required; OCR now runs on the client"})
 		}
 
 		docType := strings.ToUpper(req.DocumentType)
@@ -294,12 +347,10 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 
 		start := time.Now()
 
-		// ── In production: call Google Vision or Tesseract ────
-		// fields, err := callGoogleVision(req.ImageBase64, docType)
-		// For hackathon: return structured demo extraction
-		fields := extractDocumentFields(req.ImageBase64, docType)
+		fields := extractDocumentFields(ocrText, docType)
 
 		processingMs := int(time.Since(start).Milliseconds())
+		log.Printf("[Auth OCR] %s validated in %dms, extracted chars=%d", docType, processingMs, len(ocrText))
 
 		// Log OCR attempt
 		fieldsJSON, _ := json.Marshal(fields)
@@ -312,8 +363,10 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 			"success":       true,
 			"document_type": docType,
 			"fields":        fields,
+			"raw_text":      ocrText,
+			"ocr_source":    "client_ocr",
 			"processing_ms": processingMs,
-			"message":       fmt.Sprintf("%s scanned successfully", docType),
+			"message":       fmt.Sprintf("%s validated successfully", docType),
 		})
 	}
 }
@@ -424,50 +477,192 @@ func generateSecureToken(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// extractDocumentFields — demo OCR extraction
-// In production: replace with Google Vision API call
-func extractDocumentFields(imageBase64, docType string) map[string]string {
-	// Return empty fields — user fills manually
-	// The mobile app shows a form pre-filled from OCR
-	// For production: integrate Google Cloud Vision API
-	// Cost: ~$1.50 per 1000 images
+// extractDocumentFields parses OCR text into document-specific fields.
+func extractDocumentFields(ocrText, docType string) map[string]string {
+	ocrText = strings.TrimSpace(ocrText)
+	common := extractCitizenshipFieldsNepaliAware(ocrText)
+
 	switch docType {
 	case "CITIZENSHIP":
 		return map[string]string{
-			"name":           "",
-			"citizenship_no": "",
-			"dob":            "",
-			"gender":         "",
-			"father_name":    "",
-			"mother_name":    "",
-			"district":       "",
-			"ward_no":        "",
+			"name":           common["full_name"],
+			"full_name":      common["full_name"],
+			"citizenship_no": firstNonEmpty(common["citizenship_no"], common["nid"]),
+			"nid":            common["nid"],
+			"dob":            common["dob"],
+			"gender":         common["gender"],
+			"father_name":    common["father_name"],
+			"mother_name":    common["mother_name"],
+			"district":       common["district"],
+			"ward_no":        common["ward_no"],
 		}
 	case "NID":
 		return map[string]string{
-			"name": "",
-			"nid":  "",
-			"dob":  "",
+			"name": common["full_name"],
+			"nid":  common["nid"],
+			"dob":  common["dob"],
 		}
 	case "DRIVING_LICENSE":
+		licensePattern := regexp.MustCompile(`(?i)(?:license|licence|dl|permit)[\s:#-]*([A-Z0-9-]{6,20})`)
+		licenseNo := ""
+		if match := licensePattern.FindStringSubmatch(ocrText); len(match) > 1 {
+			licenseNo = strings.TrimSpace(match[1])
+		}
+
 		return map[string]string{
-			"name":        "",
-			"license_no":  "",
-			"dob":         "",
+			"name":        common["full_name"],
+			"license_no":  licenseNo,
+			"dob":         common["dob"],
 			"expiry_date": "",
 		}
 	case "PASSPORT":
+		passportPattern := regexp.MustCompile(`\b[A-Z][0-9]{7,8}\b`)
+		passportNo := passportPattern.FindString(strings.ToUpper(ocrText))
+
+		nationalityPattern := regexp.MustCompile(`(?i)(?:nationality|country)[\s:]+([A-Za-z ]{3,30})`)
+		nationality := ""
+		if match := nationalityPattern.FindStringSubmatch(ocrText); len(match) > 1 {
+			nationality = strings.TrimSpace(match[1])
+		}
+
 		return map[string]string{
-			"name":        "",
-			"passport_no": "",
-			"nationality": "",
-			"dob":         "",
+			"name":        common["full_name"],
+			"passport_no": passportNo,
+			"nationality": nationality,
+			"dob":         common["dob"],
 			"expiry_date": "",
 			"mrz_line1":   "",
 			"mrz_line2":   "",
 		}
 	}
 	return map[string]string{}
+}
+
+func extractCitizenshipFieldsNepaliAware(ocrText string) map[string]string {
+	fields := extractCitizenshipFields(ocrText)
+	asciiText := normalizeNepaliDigits(ocrText)
+
+	if fields["nid"] == "" {
+		nepaliNidPattern := regexp.MustCompile(`[०-९]{2}-[०-९]{2}-[०-९]{2}-[०-९]{5}`)
+		if match := nepaliNidPattern.FindString(ocrText); match != "" {
+			fields["nid"] = match
+			fields["citizenship_no"] = match
+		}
+
+		asciiNIDPattern := regexp.MustCompile(`\b\d{2}-\d{2}-\d{2}-\d{5}\b`)
+		if match := asciiNIDPattern.FindString(asciiText); match != "" {
+			fields["nid"] = match
+			fields["citizenship_no"] = match
+		}
+
+		flexNIDPattern := regexp.MustCompile(`\b\d{11}\b`)
+		if match := flexNIDPattern.FindString(asciiText); match != "" {
+			formatted := fmt.Sprintf("%s-%s-%s-%s", match[0:2], match[2:4], match[4:6], match[6:11])
+			fields["nid"] = formatted
+			fields["citizenship_no"] = formatted
+		}
+	}
+
+	if fields["full_name"] == "" {
+		namePatterns := []string{
+			`(?i)(?:name|नाम)[\s:]*([^\n\r:]{2,40})`,
+			`(?i)(?:नाम)[:\s]*([^\n\r:]{2,40})`,
+		}
+		for _, pattern := range namePatterns {
+			re := regexp.MustCompile(pattern)
+			if match := re.FindStringSubmatch(ocrText); len(match) > 1 {
+				name := strings.TrimSpace(match[1])
+				if len(name) > 3 {
+					fields["full_name"] = name
+					break
+				}
+			}
+		}
+	}
+
+	if fields["dob"] == "" {
+		nepaliDobPattern := regexp.MustCompile(`[०-९]{4}[/-][०-९]{2}[/-][०-९]{2}`)
+		if match := nepaliDobPattern.FindString(ocrText); match != "" {
+			fields["dob"] = match
+		}
+
+		asciiDOBPattern := regexp.MustCompile(`\b\d{4}[/-]\d{2}[/-]\d{2}\b|\b\d{2}[/-]\d{2}[/-]\d{4}\b`)
+		if match := asciiDOBPattern.FindString(asciiText); match != "" {
+			fields["dob"] = match
+		}
+	}
+
+	if fields["father_name"] == "" {
+		fatherPattern := regexp.MustCompile(`(?i)(?:father|dad|पिता|बाबु|बुवा)[:\s]+([^\n\r;]+)`)
+		if match := fatherPattern.FindStringSubmatch(ocrText); len(match) > 1 {
+			fields["father_name"] = strings.TrimSpace(match[1])
+		}
+	}
+
+	if fields["mother_name"] == "" {
+		motherPattern := regexp.MustCompile(`(?i)(?:mother|mom|mother's name|आमा|माता)[:\s]+([^\n\r;]+)`)
+		if match := motherPattern.FindStringSubmatch(ocrText); len(match) > 1 {
+			fields["mother_name"] = strings.TrimSpace(match[1])
+		}
+	}
+
+	if fields["district"] == "" {
+		nepaliDistricts := map[string]string{
+			"कास्की":   "Kaski",
+			"पोखरा":    "Pokhara",
+			"काठमाडौं": "Kathmandu",
+			"ललितपुर":  "Lalitpur",
+			"भक्तपुर":  "Bhaktapur",
+			"चितवन":    "Chitwan",
+			"गण्डकी":   "Gandaki",
+		}
+		for nepali, english := range nepaliDistricts {
+			if strings.Contains(ocrText, nepali) {
+				fields["district"] = english
+				break
+			}
+		}
+	}
+
+	if fields["ward_no"] == "" {
+		nepaliWardPattern := regexp.MustCompile(`वडा[\s:]*(\d{1,2}|[०-९]{1,2})`)
+		if match := nepaliWardPattern.FindStringSubmatch(ocrText); len(match) > 1 {
+			fields["ward_no"] = normalizeNepaliDigits(match[1])
+		}
+
+		asciiWardPattern := regexp.MustCompile(`(?i)(?:ward|वडा)[\s:]*(\d{1,2})`)
+		if match := asciiWardPattern.FindStringSubmatch(asciiText); len(match) > 1 {
+			fields["ward_no"] = match[1]
+		}
+	}
+
+	return fields
+}
+
+func normalizeNepaliDigits(input string) string {
+	replacer := strings.NewReplacer(
+		"०", "0",
+		"१", "1",
+		"२", "2",
+		"३", "3",
+		"४", "4",
+		"५", "5",
+		"६", "6",
+		"७", "7",
+		"८", "8",
+		"९", "9",
+	)
+	return replacer.Replace(input)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func touristServiceFee(serviceType string) float64 {

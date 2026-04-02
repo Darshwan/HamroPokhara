@@ -885,6 +885,7 @@ The broker uses:
 - Go 1.22 or higher
 - PostgreSQL 14 or higher
 - Git
+- Docker Desktop (recommended for running the backend stack)
 
 ### Installation
 
@@ -936,6 +937,44 @@ docker run -p 8080:8080 --env-file .env pratibimba
 ```
 
 Server starts on `http://localhost:8080`
+
+### Hybrid Document Flow
+
+The backend no longer runs OCR on the server. The mobile app should:
+
+1. Capture a document photo on the client.
+2. Run OCR on the client or use a mobile OCR SDK.
+3. Send the extracted text to `/citizen/ocr` or `/auth/ocr` as `extracted_text`.
+4. Show the user the pre-filled fields alongside the document photo.
+5. Let the user correct any mistakes before submission.
+
+This keeps the backend lightweight and avoids server-side OCR dependencies.
+
+### Run With Docker Compose (Recommended)
+
+This starts both PostgreSQL and backend together.
+
+```bash
+# Build and start services
+docker compose up --build
+
+# Run in background
+docker compose up -d --build
+
+# Stop services
+docker compose down
+```
+
+Compose file: `docker-compose.yml`
+
+- Backend: `http://localhost:8080`
+- PostgreSQL: `localhost:5432`
+
+Notes:
+
+- `migrations/001_init.sql` is auto-applied on first DB startup.
+- Backend uses the internal Docker hostname `db` for `DATABASE_URL`.
+- Existing `.env` values are still loaded, but compose overrides `DATABASE_URL` for container networking.
 
 Expected startup output:
 ```

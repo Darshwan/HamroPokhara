@@ -1,19 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, TextInput, RefreshControl, Image,
+  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius, Shadow } from '../constants/theme';
+import { Colors, Radius, Shadow, Typography } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { statsAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 const SERVICES = [
   { icon: 'receipt-long', label: 'Pay Tax',    screen: 'Request' },
   { icon: 'water-drop',   label: 'Water Bill', screen: 'Request' },
   { icon: 'bolt',         label: 'NEA Pay',    screen: 'Request' },
   { icon: 'description',  label: 'Sifarish',   screen: 'Request' },
+];
+
+const TOURIST_SERVICES = [
+  { icon: 'explore', label: 'Explore Pokhara', screen: 'Request', desc: 'Routes, maps, and highlights' },
+  { icon: 'confirmation-number', label: 'Permits', screen: 'Request', desc: 'TIMS and entry guidance' },
+  { icon: 'local-taxi', label: 'Transport', screen: 'Track', desc: 'Shuttle, taxi, and ride help' },
+  { icon: 'support-agent', label: 'Help Desk', screen: 'Verify', desc: 'Emergency and visitor support' },
+];
+
+const TOURIST_MENU = [
+  { icon: 'map', label: 'Explore Pokhara', screen: 'Request' },
+  { icon: 'verified-user', label: 'Permit Help', screen: 'Verify' },
+  { icon: 'directions-bus', label: 'Transport', screen: 'Track' },
+  { icon: 'smart-toy', label: 'AI Assistant', screen: 'Assistant' },
+];
+
+const CITIZEN_MENU = [
+  { icon: 'assignment', label: 'Ward Services', screen: 'Request' },
+  { icon: 'qr-code', label: 'Digital Card', screen: 'Verify' },
+  { icon: 'history', label: 'My Requests', screen: 'Track' },
+  { icon: 'smart-toy', label: 'AI Assistant', screen: 'Assistant' },
 ];
 
 const NOTICES = ['Urgent', 'Infrastructure', 'Health', 'Culture', 'Tourism'];
@@ -54,9 +76,10 @@ const NEWS_ITEMS = [
 ];
 
 export default function HomeScreen({ navigation }: any) {
-  const { citizen } = useStore();
+  const { citizen, tourist, isTourist, logout } = useStore();
   const [stats, setStats] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
   const loadStats = async () => {
@@ -76,21 +99,11 @@ export default function HomeScreen({ navigation }: any) {
 
   useEffect(() => { loadStats(); }, []);
 
+  const menuItems = isTourist ? TOURIST_MENU : CITIZEN_MENU;
+
   return (
     <SafeAreaView style={styles.container}>
-
-      {/* Top Bar */}
-      <View style={styles.topBar}>
-        <View style={styles.topLeft}>
-          <TouchableOpacity style={styles.menuBtn}>
-            <MaterialIcons name="menu" size={24} color={Colors.primary} />
-          </TouchableOpacity>
-          <Text style={styles.appName}>Hamro Pokhara</Text>
-        </View>
-        <TouchableOpacity style={styles.notifBtn}>
-          <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
+      <AppHeader showMenu showNotif showLang onMenu={() => setShowMenu(true)} onNotif={() => {}} />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -98,110 +111,178 @@ export default function HomeScreen({ navigation }: any) {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
-        {/* Welcome */}
-        <View style={styles.welcome}>
-          <Text style={styles.dateText}>{today}</Text>
-          <Text style={styles.greetText}>Namaste, Pokhara</Text>
-        </View>
-
-        {/* Search */}
-        <View style={styles.searchBar}>
-          <MaterialIcons name="search" size={22} color={Colors.primary} style={{ opacity: 0.6 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="What do you need today?"
-            placeholderTextColor={Colors.outline}
-          />
-          <TouchableOpacity style={styles.micBtn}>
-            <MaterialIcons name="mic" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Notices horizontal scroll */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Suchana <Text style={styles.sectionSub}>/ Notices</Text></Text>
-          <TouchableOpacity><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.noticesRow}>
-          {NOTICES.map((n, i) => (
-            <TouchableOpacity key={n} style={styles.noticeItem}>
-              <View style={[styles.noticeCircle, i === 0 && styles.noticeCircleUrgent]}>
-                <View style={styles.noticeInner}>
-                  <MaterialIcons
-                    name={i === 0 ? 'campaign' : i === 1 ? 'construction' : i === 2 ? 'local-hospital' : i === 3 ? 'celebration' : 'landscape'}
-                    size={24}
-                    color={i === 0 ? Colors.secondary : Colors.primary}
-                  />
-                </View>
-              </View>
-              <Text style={[styles.noticeLabel, i === 0 && styles.noticeLabelUrgent]}>{n}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Weather + Ward bento */}
-        <View style={styles.bentoRow}>
-          {/* Weather */}
-          <View style={styles.weatherCard}>
+        {isTourist ? (
+          <>
             <LinearGradient
               colors={[Colors.primary, Colors.primaryContainer]}
-              style={StyleSheet.absoluteFill}
+              style={styles.touristHero}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            />
-            <View style={styles.weatherBadge}>
-              <Text style={styles.weatherBadgeText}>Atmosphere Today</Text>
-            </View>
-            <View style={styles.weatherMain}>
-              <MaterialIcons name="wb-sunny" size={44} color="#fff" />
-              <View>
-                <Text style={styles.tempText}>24°C</Text>
-                <Text style={styles.condText}>Mostly Sunny · Pokhara-6</Text>
+            >
+              <View style={styles.touristBadge}>
+                <MaterialIcons name="flight-takeoff" size={14} color={Colors.primary} />
+                <Text style={styles.touristBadgeText}>Tourist Mode</Text>
               </View>
-              <View style={styles.aqiBox}>
-                <Text style={styles.aqiLabel}>AQI Index</Text>
-                <Text style={styles.aqiNum}>42</Text>
-                <Text style={styles.aqiState}>Excellent</Text>
+              <Text style={styles.touristTitle}>Welcome, {tourist?.name || 'Traveler'}</Text>
+              <Text style={styles.touristDesc}>
+                Quick access to permits, transport, help, and the best places around Pokhara.
+              </Text>
+              <View style={styles.touristMetaRow}>
+                <View style={styles.touristMetaPill}><Text style={styles.touristMetaText}>{today}</Text></View>
+                <View style={styles.touristMetaPill}><Text style={styles.touristMetaText}>{tourist?.nationality || 'International visitor'}</Text></View>
               </View>
-            </View>
-            <View style={styles.weatherStats}>
-              <View style={styles.weatherStat}>
-                <Text style={styles.weatherStatLabel}>Humidity</Text>
-                <Text style={styles.weatherStatVal}>62%</Text>
-              </View>
-              <View style={styles.weatherStat}>
-                <Text style={styles.weatherStatLabel}>UV Index</Text>
-                <Text style={styles.weatherStatVal}>Low</Text>
-              </View>
-              <View style={styles.weatherStat}>
-                <Text style={styles.weatherStatLabel}>Visibility</Text>
-                <Text style={styles.weatherStatVal}>10km</Text>
-              </View>
-            </View>
-          </View>
+            </LinearGradient>
 
-          {/* Ward Card */}
-          <View style={styles.wardCard}>
-            <View style={styles.wardTop}>
-              <View style={styles.wardIcon}>
-                <MaterialIcons name="location-on" size={22} color={Colors.primary} />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Visitor Hub <Text style={styles.sectionSub}>/ Quick actions</Text></Text>
+            </View>
+            <View style={styles.touristGrid}>
+              {TOURIST_SERVICES.map((service) => (
+                <TouchableOpacity
+                  key={service.label}
+                  style={styles.touristServiceCard}
+                  onPress={() => navigation.navigate(service.screen)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.touristServiceIcon}>
+                    <MaterialIcons name={service.icon as any} size={22} color={Colors.primary} />
+                  </View>
+                  <Text style={styles.touristServiceLabel}>{service.label}</Text>
+                  <Text style={styles.touristServiceDesc}>{service.desc}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.touristBento}>
+              <View style={styles.touristInfoCard}>
+                <Text style={styles.touristInfoTag}>Travel helper</Text>
+                <Text style={styles.touristInfoTitle}>Need a route, a guide, or a permit?</Text>
+                <Text style={styles.touristInfoDesc}>
+                  Use the hamburger menu for visitor-only shortcuts and local support.
+                </Text>
               </View>
-              <View style={styles.wardBadge}>
-                <Text style={styles.wardBadgeText}>Ward 09</Text>
+              <View style={styles.touristSupportCard}>
+                <MaterialIcons name="sos" size={26} color={Colors.secondary} />
+                <Text style={styles.touristSupportTitle}>Emergency</Text>
+                <Text style={styles.touristSupportDesc}>Instant access to help, police, and local contacts.</Text>
               </View>
             </View>
-            <Text style={styles.wardTitle}>Ward Presence</Text>
-            <Text style={styles.wardDesc}>Your local representatives are active. Check ward progress.</Text>
-            <TouchableOpacity style={styles.wardBtn}>
-              <Text style={styles.wardBtnText}>Open Ward Map</Text>
-              <MaterialIcons name="arrow-forward" size={14} color={Colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
+          </>
+        ) : (
+          <>
+            {/* Welcome */}
+            <View style={styles.welcome}>
+              <Text style={styles.dateText}>{today}</Text>
+              <Text style={styles.greetText}>Namaste, Pokhara</Text>
+            </View>
+
+            {/* Search */}
+            <View style={styles.searchBar}>
+              <MaterialIcons name="search" size={22} color={Colors.primary} style={{ opacity: 0.6 }} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="What do you need today?"
+                placeholderTextColor={Colors.outline}
+              />
+              <TouchableOpacity style={styles.micBtn}>
+                <MaterialIcons name="mic" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {!isTourist && (
+          <>
+            {/* Notices horizontal scroll */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Suchana <Text style={styles.sectionSub}>/ Notices</Text></Text>
+              <TouchableOpacity><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.noticesRow}>
+              {NOTICES.map((n, i) => (
+                <TouchableOpacity key={n} style={styles.noticeItem}>
+                  <View style={[styles.noticeCircle, i === 0 && styles.noticeCircleUrgent]}>
+                    <View style={styles.noticeInner}>
+                      <MaterialIcons
+                        name={i === 0 ? 'campaign' : i === 1 ? 'construction' : i === 2 ? 'local-hospital' : i === 3 ? 'celebration' : 'landscape'}
+                        size={24}
+                        color={i === 0 ? Colors.secondary : Colors.primary}
+                      />
+                    </View>
+                  </View>
+                  <Text style={[styles.noticeLabel, i === 0 && styles.noticeLabelUrgent]}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
+        {!isTourist && (
+          <>
+            {/* Weather + Ward bento */}
+            <View style={styles.bentoRow}>
+              {/* Weather */}
+              <View style={styles.weatherCard}>
+                <LinearGradient
+                  colors={[Colors.primary, Colors.primaryContainer]}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                />
+                <View style={styles.weatherBadge}>
+                  <Text style={styles.weatherBadgeText}>Atmosphere Today</Text>
+                </View>
+                <View style={styles.weatherMain}>
+                  <MaterialIcons name="wb-sunny" size={44} color="#fff" />
+                  <View>
+                    <Text style={styles.tempText}>24°C</Text>
+                    <Text style={styles.condText}>Mostly Sunny · Pokhara-6</Text>
+                  </View>
+                  <View style={styles.aqiBox}>
+                    <Text style={styles.aqiLabel}>AQI Index</Text>
+                    <Text style={styles.aqiNum}>42</Text>
+                    <Text style={styles.aqiState}>Excellent</Text>
+                  </View>
+                </View>
+                <View style={styles.weatherStats}>
+                  <View style={styles.weatherStat}>
+                    <Text style={styles.weatherStatLabel}>Humidity</Text>
+                    <Text style={styles.weatherStatVal}>62%</Text>
+                  </View>
+                  <View style={styles.weatherStat}>
+                    <Text style={styles.weatherStatLabel}>UV Index</Text>
+                    <Text style={styles.weatherStatVal}>Low</Text>
+                  </View>
+                  <View style={styles.weatherStat}>
+                    <Text style={styles.weatherStatLabel}>Visibility</Text>
+                    <Text style={styles.weatherStatVal}>10km</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Ward Card */}
+              <View style={styles.wardCard}>
+                <View style={styles.wardTop}>
+                  <View style={styles.wardIcon}>
+                    <MaterialIcons name="location-on" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={styles.wardBadge}>
+                    <Text style={styles.wardBadgeText}>Ward 09</Text>
+                  </View>
+                </View>
+                <Text style={styles.wardTitle}>Ward Presence</Text>
+                <Text style={styles.wardDesc}>Your local representatives are active. Check ward progress.</Text>
+                <TouchableOpacity style={styles.wardBtn}>
+                  <Text style={styles.wardBtnText}>Open Ward Map</Text>
+                  <MaterialIcons name="arrow-forward" size={14} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Pokhara Samachar */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Pokhara Samachar <Text style={styles.sectionSub}>/ Top 5</Text></Text>
-          <TouchableOpacity><Text style={styles.viewAll}>Digital Edition</Text></TouchableOpacity>
+          <Text style={styles.sectionTitle}>{isTourist ? 'Travel Stories' : 'Pokhara Samachar'} <Text style={styles.sectionSub}>/ Top 5</Text></Text>
+          <TouchableOpacity><Text style={styles.viewAll}>{isTourist ? 'Visitor Guide' : 'Digital Edition'}</Text></TouchableOpacity>
         </View>
 
         <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard}>
@@ -230,42 +311,55 @@ export default function HomeScreen({ navigation }: any) {
 
         {/* E-Sewa Services */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>E-Sewa <Text style={styles.sectionSub}>/ Direct</Text></Text>
+          <Text style={styles.sectionTitle}>{isTourist ? 'Visitor Services' : 'E-Sewa'} <Text style={styles.sectionSub}>/ Direct</Text></Text>
         </View>
-        <View style={styles.servicesGrid}>
-          {SERVICES.map((s) => (
+        <View style={isTourist ? styles.touristGrid : styles.servicesGrid}>
+          {(isTourist ? TOURIST_SERVICES : SERVICES).map((s: any) => (
             <TouchableOpacity
               key={s.label}
-              style={styles.serviceCard}
+              style={isTourist ? styles.touristServiceCardCompact : styles.serviceCard}
               onPress={() => navigation.navigate(s.screen)}
               activeOpacity={0.8}
             >
               <MaterialIcons name={s.icon as any} size={28} color={Colors.primary} />
               <Text style={styles.serviceLabel}>{s.label}</Text>
+              {isTourist && <Text style={styles.touristServiceDesc}>{s.desc}</Text>}
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Digital Citizen Card */}
-        <View style={styles.digitalCard}>
-          <View style={styles.digitalTop}>
-            <MaterialIcons name="verified" size={20} color={Colors.goldLight} />
-            <Text style={styles.digitalLabel}>Digital Citizen Card</Text>
+        {!isTourist ? (
+          <View style={styles.digitalCard}>
+            <View style={styles.digitalTop}>
+              <MaterialIcons name="verified" size={20} color={Colors.goldLight} />
+              <Text style={styles.digitalLabel}>Digital Citizen Card</Text>
+            </View>
+            <Text style={styles.digitalDesc}>
+              Your virtual identity card for quick verification at ward offices.
+            </Text>
+            <TouchableOpacity
+              style={styles.qrBtn}
+              onPress={() => navigation.navigate('Verify')}
+            >
+              <MaterialIcons name="qr-code" size={16} color="#fff" />
+              <Text style={styles.qrBtnText}>Show QR Code</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.digitalDesc}>
-            Your virtual identity card for quick verification at ward offices.
-          </Text>
-          <TouchableOpacity
-            style={styles.qrBtn}
-            onPress={() => navigation.navigate('Verify')}
-          >
-            <MaterialIcons name="qr-code" size={16} color="#fff" />
-            <Text style={styles.qrBtnText}>Show QR Code</Text>
-          </TouchableOpacity>
-        </View>
+        ) : (
+          <View style={styles.touristGuideCard}>
+            <MaterialIcons name="travel-explore" size={20} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.touristGuideTitle}>Stay connected while exploring.</Text>
+              <Text style={styles.touristGuideDesc}>
+                Use the menu for permits, routes, and local support anytime.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* PRATIBIMBA Stats */}
-        {stats && (
+        {!isTourist && stats && (
           <View style={styles.statsCard}>
             <Text style={styles.statsTitle}>🔒 PRATIBIMBA Live</Text>
             <View style={styles.statsRow}>
@@ -289,6 +383,48 @@ export default function HomeScreen({ navigation }: any) {
 
       </ScrollView>
 
+      <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setShowMenu(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.menuSheet}>
+            <View style={styles.menuHeader}>
+              <View>
+                <Text style={styles.menuKicker}>{isTourist ? 'Tourist menu' : 'Citizen menu'}</Text>
+                <Text style={styles.menuTitle}>{isTourist ? tourist?.name || 'Traveler' : citizen?.name || 'Resident'}</Text>
+              </View>
+              <TouchableOpacity style={styles.menuClose} onPress={() => setShowMenu(false)}>
+                <MaterialIcons name="close" size={20} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {menuItems.map((item) => (
+              <TouchableOpacity
+                key={item.label}
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  navigation.navigate(item.screen);
+                }}
+              >
+                <MaterialIcons name={item.icon as any} size={20} color={Colors.primary} />
+                <Text style={styles.menuItemText}>{item.label}</Text>
+                <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={styles.menuLogout}
+              onPress={async () => {
+                setShowMenu(false);
+                await logout();
+              }}
+            >
+              <MaterialIcons name="logout" size={20} color={Colors.secondary} />
+              <Text style={styles.menuLogoutText}>Logout</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Emergency FAB */}
       <TouchableOpacity style={styles.fab}>
         <MaterialIcons name="sos" size={22} color="#fff" />
@@ -301,20 +437,41 @@ export default function HomeScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.surface },
-  topBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 12,
-    backgroundColor: 'rgba(247,250,249,0.96)',
-    borderBottomWidth: 1, borderBottomColor: 'rgba(0,59,90,0.06)',
-  },
-  topLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  menuBtn: { padding: 6, borderRadius: Radius.full, marginLeft: -2 },
-  appName: { fontSize: 18, fontWeight: '900', color: Colors.primary, letterSpacing: -0.3 },
-  notifBtn: { padding: 6, borderRadius: Radius.full, marginRight: -2 },
   scrollContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 130 },
   welcome: { marginBottom: 14 },
-  dateText: { fontSize: 11, color: Colors.onSurfaceVariant, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
-  greetText: { fontSize: 30, fontWeight: '900', color: Colors.primary, letterSpacing: -0.8, marginTop: 2 },
+  touristHero: {
+    borderRadius: Radius.xl,
+    padding: 18,
+    marginBottom: 16,
+    overflow: 'hidden',
+    ...Shadow.md,
+  },
+  touristBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 14,
+  },
+  touristBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.primary, textTransform: 'uppercase', letterSpacing: 0.8 },
+  touristTitle: { fontSize: 26, fontWeight: '900', color: '#fff', lineHeight: 32 },
+  touristDesc: { fontSize: 13, color: 'rgba(255,255,255,0.78)', lineHeight: 19, marginTop: 8 },
+  touristMetaRow: { flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' },
+  touristMetaPill: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  touristMetaText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  dateText: { ...Typography.overline, color: Colors.onSurfaceVariant, letterSpacing: 1.5 },
+  greetText: { ...Typography.display, color: Colors.primary, marginTop: 2 },
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: Colors.surfaceContainerHigh,
@@ -328,7 +485,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary },
+  sectionTitle: { ...Typography.title, color: Colors.primary },
   sectionSub: { fontWeight: '400', color: Colors.outline },
   viewAll: { fontSize: 13, fontWeight: '600', color: Colors.primary },
   noticesRow: { gap: 14, paddingRight: 12, paddingBottom: 8, marginBottom: 14 },
@@ -444,6 +601,7 @@ const styles = StyleSheet.create({
   newsItemTitle: { fontSize: 12, fontWeight: '700', color: Colors.primary, lineHeight: 17 },
   newsItemTime: { fontSize: 10, color: Colors.onSurfaceVariant, marginTop: 4, letterSpacing: 0.5 },
   servicesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  touristGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
   serviceCard: {
     width: '48.5%', height: 140,
     backgroundColor: Colors.surfaceContainerLowest,
@@ -451,6 +609,77 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.surfaceContainer, ...Shadow.sm,
   },
   serviceLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, color: Colors.onSurface },
+  touristServiceCard: {
+    width: '48.5%',
+    minHeight: 156,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.xl,
+    padding: 14,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainer,
+    ...Shadow.sm,
+  },
+  touristServiceCardCompact: {
+    width: '48.5%',
+    minHeight: 122,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.xl,
+    padding: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainer,
+    ...Shadow.sm,
+  },
+  touristServiceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  touristServiceLabel: { fontSize: 12, fontWeight: '800', color: Colors.primary, lineHeight: 16 },
+  touristServiceDesc: { fontSize: 11, color: Colors.onSurfaceVariant, lineHeight: 16 },
+  touristBento: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  touristInfoCard: {
+    flex: 1.2,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.xl,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainer,
+    ...Shadow.sm,
+  },
+  touristInfoTag: { fontSize: 10, fontWeight: '800', color: Colors.primary, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  touristInfoTitle: { fontSize: 16, fontWeight: '900', color: Colors.primary, lineHeight: 22 },
+  touristInfoDesc: { fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 8 },
+  touristSupportCard: {
+    flex: 0.9,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.xl,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainer,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    ...Shadow.sm,
+  },
+  touristSupportTitle: { fontSize: 14, fontWeight: '800', color: Colors.primary, marginTop: 10 },
+  touristSupportDesc: { fontSize: 11, color: Colors.onSurfaceVariant, lineHeight: 16, marginTop: 6 },
+  touristGuideCard: {
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: Radius.xl,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  touristGuideTitle: { fontSize: 14, fontWeight: '800', color: Colors.primary, marginBottom: 4 },
+  touristGuideDesc: { fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 17 },
   digitalCard: {
     backgroundColor: Colors.primary, borderRadius: Radius.xl, padding: 18, marginBottom: 12,
   },
@@ -479,4 +708,47 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full, ...Shadow.lg,
   },
   fabText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,20,18,0.35)',
+    justifyContent: 'flex-start',
+    paddingTop: 72,
+    paddingHorizontal: 16,
+  },
+  menuSheet: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: 16,
+    ...Shadow.lg,
+  },
+  menuHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  menuKicker: { fontSize: 10, fontWeight: '800', color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1 },
+  menuTitle: { fontSize: 18, fontWeight: '900', color: Colors.primary, marginTop: 4 },
+  menuClose: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.outlineVariant,
+  },
+  menuItemText: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.primary },
+  menuLogout: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.outlineVariant,
+  },
+  menuLogoutText: { fontSize: 14, fontWeight: '800', color: Colors.secondary },
 });

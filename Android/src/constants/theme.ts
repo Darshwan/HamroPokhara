@@ -1,3 +1,5 @@
+import type { TextStyle } from 'react-native';
+
 export const Colors = {
   primary: '#003b5a',
   primaryContainer: '#1a5276',
@@ -40,6 +42,36 @@ export const Fonts = {
   semiBold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
   extraBold: 'Inter_800ExtraBold',
+};
+
+type TypographyScale = {
+  display: TextStyle;
+  h1: TextStyle;
+  h2: TextStyle;
+  h3: TextStyle;
+  title: TextStyle;
+  subtitle: TextStyle;
+  body: TextStyle;
+  bodyStrong: TextStyle;
+  caption: TextStyle;
+  overline: TextStyle;
+  button: TextStyle;
+  mono: TextStyle;
+};
+
+export const Typography: TypographyScale = {
+  display: { fontSize: 32, fontWeight: '900', letterSpacing: -0.8 },
+  h1: { fontSize: 28, fontWeight: '800', letterSpacing: -0.6 },
+  h2: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
+  h3: { fontSize: 18, fontWeight: '700', letterSpacing: -0.2 },
+  title: { fontSize: 16, fontWeight: '700' },
+  subtitle: { fontSize: 13, fontWeight: '500' },
+  body: { fontSize: 14, fontWeight: '400' },
+  bodyStrong: { fontSize: 14, fontWeight: '600' },
+  caption: { fontSize: 11, fontWeight: '500', letterSpacing: 0.2 },
+  overline: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  button: { fontSize: 15, fontWeight: '700' },
+  mono: { fontSize: 12, fontFamily: 'monospace' },
 };
 
 export const Radius = {
