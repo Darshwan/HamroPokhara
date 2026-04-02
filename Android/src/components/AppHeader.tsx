@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity, Image,
   StatusBar,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ interface Props {
   onLang?:      () => void;
   rightContent?: React.ReactNode;
   transparent?: boolean;
+  showLogo?:    boolean;
 }
 
 export default function AppHeader({
@@ -36,6 +37,7 @@ export default function AppHeader({
   onLang,
   rightContent,
   transparent = false,
+  showLogo = true,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { language, setLanguage } = useStore();
@@ -64,6 +66,11 @@ export default function AppHeader({
             <TouchableOpacity style={h.iconBtn} onPress={onMenu}>
               <MaterialIcons name="menu" size={22} color={Colors.primary} />
             </TouchableOpacity>
+          )}
+          {showLogo && (
+            <View style={h.logoWrap}>
+              <Image source={require('../../assets/logo.png')} style={h.logo} resizeMode="contain" />
+            </View>
           )}
           <Text style={h.title}>{title}</Text>
         </View>
@@ -124,6 +131,17 @@ const h = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.surfaceContainerLow,
+  },
+  logoWrap: {
+    width: 60,
+    height: 60,
+    overflow: 'hidden',
+    borderWidth: 0,
+    // backgroundColor: '#FFFFFF',
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
   },
   title: {
     ...Typography.h3,

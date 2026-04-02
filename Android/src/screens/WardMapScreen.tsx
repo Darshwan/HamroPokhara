@@ -118,7 +118,7 @@ export default function WardMapScreen({ navigation }: any) {
                 <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
               </View>
               <Text style={styles.wardMeta} numberOfLines={1}>{t('Head', 'अध्यक्ष')}: {ward.wardHead.name}</Text>
-              <Text style={styles.wardMeta} numberOfLines={1}>{t('Officer', 'अधिकृत')}: {ward.wardOfficer.name}</Text>
+              <Text style={styles.wardMeta} numberOfLines={1}>{t('Officer', 'सचिव')}: {ward.wardOfficer.name}</Text>
             </TouchableOpacity>
           ))}
         </View>

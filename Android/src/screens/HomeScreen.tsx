@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard, ActivityIndicator,
+  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard, ActivityIndicator, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -112,6 +112,15 @@ const NOTICE_STORY_IMAGES = [
   'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
+];
+
+// Add 2-5 Pokhara weather background image links here.
+const POKHARA_WEATHER_BG_IMAGES = [
+  './assets/pokhara_weather_1.jpg',
+  'https://media.greenvalleynepaltreks.com/uploads/fullbanner/view-from-kahun-danda.webp',
+  'https://imgcld.yatra.com/ytimages/image/upload/v1466658591/Pokhara_Overview.jpg',
+  'https://www.andbeyond.com/wp-content/uploads/sites/5/pokhara-valley-nepal.jpg',
+  'https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2a/fc/df/52/caption.jpg?w=800&h=800&s=1',
 ];
 
 const DEMO_NEWS = [
@@ -258,6 +267,9 @@ export default function HomeScreen({ navigation }: any) {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [weatherBgIndex, setWeatherBgIndex] = useState(0);
+  const [failedWeatherImages, setFailedWeatherImages] = useState<Record<string, boolean>>({});
+  const weatherBgOpacity = useRef(new Animated.Value(0.45)).current;
   const isNepali = language === 'ne';
   const today = new Date().toLocaleDateString(isNepali ? 'ne-NP' : 'en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
@@ -352,6 +364,38 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   useEffect(() => {
+    if (POKHARA_WEATHER_BG_IMAGES.length <= 1) return;
+
+    const interval = setInterval(() => {
+      Animated.timing(weatherBgOpacity, {
+        toValue: 0,
+        duration: 450,
+        useNativeDriver: true,
+      }).start(() => {
+        setWeatherBgIndex((prev) => (prev + 1) % POKHARA_WEATHER_BG_IMAGES.length);
+        Animated.timing(weatherBgOpacity, {
+          toValue: 0.45,
+          duration: 700,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 9000);
+
+    return () => clearInterval(interval);
+  }, [weatherBgOpacity]);
+
+  const weatherBgUri = POKHARA_WEATHER_BG_IMAGES[weatherBgIndex % POKHARA_WEATHER_BG_IMAGES.length] || '';
+  const forecastBgUri = POKHARA_WEATHER_BG_IMAGES[(weatherBgIndex + 1) % POKHARA_WEATHER_BG_IMAGES.length] || '';
+
+  const handleWeatherBgError = (uri: string) => {
+    if (!uri) return;
+    setFailedWeatherImages((prev) => ({ ...prev, [uri]: true }));
+    if (POKHARA_WEATHER_BG_IMAGES.length > 1) {
+      setWeatherBgIndex((prev) => (prev + 1) % POKHARA_WEATHER_BG_IMAGES.length);
+    }
+  };
+
+  useEffect(() => {
     const timeout = setTimeout(() => {
       setDebouncedQuery(searchQuery.trim().toLowerCase());
     }, 180);
@@ -426,20 +470,20 @@ export default function HomeScreen({ navigation }: any) {
 
     const serviceItems = SERVICES.map((item) => ({
       id: `citizen-service-${item.label}`,
-        title: isNepali ? item.labelNE : item.label,
-        subtitle: t('E-Sewa service', 'ई-सेवा सुविधा'),
+      title: isNepali ? item.labelNE : item.label,
+      subtitle: t('E-Sewa service', 'ई-सेवा सुविधा'),
       icon: item.icon,
       screen: item.screen,
-        keywords: [item.label, item.labelNE, 'service', 'citizen', 'esewa'],
+      keywords: [item.label, item.labelNE, 'service', 'citizen', 'esewa'],
     }));
 
     const menuSearchItems = CITIZEN_MENU.map((item) => ({
       id: `citizen-menu-${item.label}`,
-        title: isNepali ? item.labelNE : item.label,
-        subtitle: t('Citizen menu action', 'नागरिक मेनु कार्य'),
+      title: isNepali ? item.labelNE : item.label,
+      subtitle: t('Citizen menu action', 'नागरिक मेनु कार्य'),
       icon: item.icon,
       screen: item.screen,
-        keywords: [item.label, item.labelNE, 'menu', 'citizen', 'ward'],
+      keywords: [item.label, item.labelNE, 'menu', 'citizen', 'ward'],
     }));
 
     const noticeItems = notices.map((item) => ({
@@ -478,7 +522,7 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <AppHeader showMenu showNotif showLang onMenu={() => setShowMenu(true)} onNotif={() => {}} />
+      <AppHeader showMenu showNotif showLang onMenu={() => setShowMenu(true)} onNotif={() => { }} />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -643,7 +687,7 @@ export default function HomeScreen({ navigation }: any) {
                     onPress={() => setSelectedStory(story)}
                   >
                     <ImageBackground source={{ uri: story.image }} style={styles.storyImage} imageStyle={styles.storyImageClip}>
-                      <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={StyleSheet.absoluteFill} />
+                      <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={styles.storyImageOverlay} />
                       <View style={styles.storyTopRow}>
                         <View style={styles.storyBadge}>
                           <Text style={styles.storyBadgeText}>{story.wardLabel}</Text>
@@ -676,6 +720,20 @@ export default function HomeScreen({ navigation }: any) {
                     colors={[Colors.primary, Colors.primaryContainer]}
                     style={StyleSheet.absoluteFill}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  />
+                  {!!weatherBgUri && !failedWeatherImages[weatherBgUri] && (
+                    <Animated.Image
+                      source={{ uri: weatherBgUri }}
+                      style={[styles.weatherBgImage, { opacity: weatherBgOpacity }]}
+                      resizeMode="cover"
+                      onError={() => handleWeatherBgError(weatherBgUri)}
+                    />
+                  )}
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.32)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                   />
                   <View style={styles.weatherBadge}>
                     <Text style={styles.weatherBadgeText}>{t('Atmosphere Today', 'आजको मौसम')}</Text>
@@ -713,6 +771,20 @@ export default function HomeScreen({ navigation }: any) {
                     colors={[Colors.primary, Colors.primaryContainer]}
                     style={StyleSheet.absoluteFill}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  />
+                  {!!forecastBgUri && !failedWeatherImages[forecastBgUri] && (
+                    <Animated.Image
+                      source={{ uri: forecastBgUri }}
+                      style={[styles.weatherBgImage, { opacity: weatherBgOpacity }]}
+                      resizeMode="cover"
+                      onError={() => handleWeatherBgError(forecastBgUri)}
+                    />
+                  )}
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.32)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                   />
                   <View style={styles.weatherBadge}>
                     <Text style={styles.weatherBadgeText}>{t('5-Day Forecast', '५ दिनको पूर्वानुमान')}</Text>
@@ -752,7 +824,7 @@ export default function HomeScreen({ navigation }: any) {
                     <Text style={styles.wardBadgeText}>Ward 09</Text>
                   </View>
                 </View>
-                <Text style={styles.wardTitle}>{t('Ward Presence', 'वडा उपस्थिति')}</Text>
+                <Text style={styles.wardTitle}>{t('Ward Details', 'वडा विवरणहरू')}</Text>
                 <Text style={styles.wardDesc}>{t('Your local representatives are active. Check ward progress.', 'तपाईंका स्थानीय प्रतिनिधि सक्रिय छन्। वडाको प्रगति हेर्नुहोस्।')}</Text>
                 <TouchableOpacity style={styles.wardBtn} onPress={() => navigation.navigate('WardMap')}>
                   <Text style={styles.wardBtnText}>{t('Open Ward Map', 'वडा नक्सा खोल्नुहोस्')}</Text>
@@ -1137,8 +1209,14 @@ const styles = StyleSheet.create({
     width: 86,
     height: 86,
     justifyContent: 'flex-start',
+    borderRadius: 43,
+    overflow: 'hidden',
   },
   storyImageClip: {
+    borderRadius: 43,
+  },
+  storyImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 43,
   },
   storyTopRow: {
@@ -1329,6 +1407,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     width: 320,
     ...Shadow.md,
+  },
+  weatherBgImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   weatherBadge: {
     alignSelf: 'flex-start',
