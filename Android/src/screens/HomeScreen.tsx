@@ -1410,8 +1410,7 @@ const styles = StyleSheet.create({
   },
   weatherBgImage: {
     ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
+    resizeMode: 'cover',
   },
   weatherBadge: {
     alignSelf: 'flex-start',

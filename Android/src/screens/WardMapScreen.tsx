@@ -15,7 +15,7 @@ import { useStore } from '../store/useStore';
 
 type WardContact = {
   wardNo: number;
-  wardHead: {
+  wardChairman: {
     name: string;
     phone: string;
     email: string;
@@ -33,7 +33,7 @@ const buildWardContacts = (): WardContact[] => (
     const padded = String(wardNo).padStart(2, '0');
     return {
       wardNo,
-      wardHead: {
+      wardChairman: {
         name: `Ward Head ${padded}`,
         phone: `+977-61-40${padded}01`,
         email: `ward${padded}.head@pokharamun.gov.np`,
@@ -58,7 +58,7 @@ export default function WardMapScreen({ navigation }: any) {
     const q = query.trim().toLowerCase();
     if (!q) return wards;
     return wards.filter((w) => {
-      const label = `ward वडा ${w.wardNo} ${w.wardHead.name} ${w.wardOfficer.name}`.toLowerCase();
+      const label = `ward वडा ${w.wardNo} ${w.wardChairman.name} ${w.wardOfficer.name}`.toLowerCase();
       return label.includes(q);
     });
   }, [query, wards]);
@@ -83,7 +83,7 @@ export default function WardMapScreen({ navigation }: any) {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <Text style={styles.heroTitle}>{t('Pokhara Ward Map', 'पोखरा वडा नक्सा')}</Text>
-          <Text style={styles.heroSubtitle}>{t('Browse all 33 wards and open contact details for ward heads and officers.', 'सबै ३३ वटा वडाहरू हेर्नुहोस् र वडा अध्यक्ष तथा अधिकृतको सम्पर्क विवरण खोल्नुहोस्।')}</Text>
+          <Text style={styles.heroSubtitle}>{t('Browse all 33 wards and open contact details for ward Chairman and officers.', 'सबै ३३ वटा वडाहरू हेर्नुहोस् र वडा अध्यक्ष तथा अधिकृतको सम्पर्क विवरण खोल्नुहोस्।')}</Text>
           <View style={styles.searchBar}>
             <MaterialIcons name="search" size={18} color={Colors.outline} />
             <TextInput
@@ -117,7 +117,7 @@ export default function WardMapScreen({ navigation }: any) {
                 </View>
                 <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
               </View>
-              <Text style={styles.wardMeta} numberOfLines={1}>{t('Head', 'अध्यक्ष')}: {ward.wardHead.name}</Text>
+              <Text style={styles.wardMeta} numberOfLines={1}>{t('Head', 'अध्यक्ष')}: {ward.wardChairman.name}</Text>
               <Text style={styles.wardMeta} numberOfLines={1}>{t('Officer', 'सचिव')}: {ward.wardOfficer.name}</Text>
             </TouchableOpacity>
           ))}
