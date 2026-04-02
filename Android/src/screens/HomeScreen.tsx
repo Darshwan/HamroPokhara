@@ -114,6 +114,9 @@ const NOTICE_STORY_IMAGES = [
   'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
 ];
 
+// Digital Newspaper Section hero image
+const DIGITAL_NEWSPAPER_IMAGE = 'https://images.unsplash.com/photo-1495551821494-d1dab916e3f2?auto=format&fit=crop&w=1200&q=80';
+
 // Add 2-5 Pokhara weather background image links here.
 const POKHARA_WEATHER_BG_IMAGES = [
   './assets/pokhara_weather_1.jpg',
@@ -835,6 +838,34 @@ export default function HomeScreen({ navigation }: any) {
           </>
         )}
 
+        {!isTourist && (
+          <>
+            {/* Digital Newspaper Section */}
+            <View style={styles.fullWidthRow}>
+              <TouchableOpacity activeOpacity={0.92} style={styles.newspaperHeroCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                <ImageBackground 
+                  source={{ uri: DIGITAL_NEWSPAPER_IMAGE }} 
+                  style={styles.newspaperHeroImage}
+                  imageStyle={styles.newspaperHeroImageClip}
+                >
+                  <LinearGradient 
+                    colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.65)']} 
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View style={styles.newspaperHeroContent}>
+                    <View style={styles.newspaperBadge}>
+                      <MaterialIcons name="newspaper" size={14} color="#fff" />
+                      <Text style={styles.newspaperBadgeText}>{t('Digital Edition', 'डिजिटल संस्करण')}</Text>
+                    </View>
+                    <Text style={styles.newspaperHeroTitle}>{t('Digital Newspaper Section', 'डिजिटल समाचारपत्र खण्ड')}</Text>
+                    <Text style={styles.newspaperHeroDesc}>{t('Stay updated with all the latest news, updates, and announcements from your township.', 'आपनो नगरपालिका का सबै नया समाचार, अपडेट र घोषणा साथ अद्यावधिक रहनुहोस्।')}</Text>
+                  </View>
+                </ImageBackground>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
         {/* Notices / News */}
         {!isTourist && (
           <>
@@ -1504,6 +1535,55 @@ const styles = StyleSheet.create({
     paddingVertical: 11, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
   wardBtnText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
+  newspaperHeroCard: {
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
+    minHeight: 220,
+    marginBottom: 16,
+    ...Shadow.md,
+  },
+  newspaperHeroImage: {
+    width: '100%',
+    height: 220,
+    justifyContent: 'flex-end',
+  },
+  newspaperHeroImageClip: {
+    borderRadius: Radius.xl,
+  },
+  newspaperHeroContent: {
+    padding: 18,
+    gap: 10,
+  },
+  newspaperBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  newspaperBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  newspaperHeroTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  newspaperHeroDesc: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    lineHeight: 18,
+  },
   heroNewsCard: {
     borderRadius: Radius.xl,
     overflow: 'hidden',
