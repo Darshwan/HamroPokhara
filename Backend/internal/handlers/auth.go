@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -403,67 +402,6 @@ func GuestSession(db *database.DB) fiber.Handler {
 			"session_id":   sessionID,
 			"session_type": "GUEST",
 			"message":      "Browsing as guest",
-		})
-	}
-}
-
-// ── OCR Processing ────────────────────────────────────────────
-
-// POST /auth/ocr
-// Process a scanned document image and return extracted fields
-func ProcessDocumentOCR(db *database.DB) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		traceID := authTraceID(c)
-		logAuth(traceID, "request", "Auth OCR validation request received from ip=%s", c.IP())
-
-		var req struct {
-			ImageBase64   string `json:"image_base64"`   // optional client photo for UI preview
-			ExtractedText string `json:"extracted_text"` // required client OCR output
-			DocumentType  string `json:"document_type"`
-			// NID | CITIZENSHIP | DRIVING_LICENSE | PASSPORT
-		}
-		if err := c.BodyParser(&req); err != nil {
-			logAuth(traceID, "parse", "BodyParser failed: %v", err)
-			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
-		}
-
-		ocrText := strings.TrimSpace(req.ExtractedText)
-		if ocrText == "" {
-			logAuth(traceID, "validate", "Rejected: extracted_text missing")
-			return c.Status(400).JSON(fiber.Map{"success": false, "message": "extracted_text is required; OCR now runs on the client"})
-		}
-
-		docType := strings.ToUpper(req.DocumentType)
-		if docType == "" {
-			docType = "NID"
-		}
-
-		start := time.Now()
-
-		fields := extractDocumentFields(ocrText, docType)
-
-		processingMs := int(time.Since(start).Milliseconds())
-		logAuth(traceID, "extract", "Document parsed type=%s chars=%d processing_ms=%d", docType, len(ocrText), processingMs)
-
-		// Log OCR attempt
-		fieldsJSON, _ := json.Marshal(fields)
-		if _, err := db.Pool.Exec(context.Background(), `
-            INSERT INTO ocr_audit (document_type, extracted_fields, processing_ms, ip_address)
-            VALUES ($1, $2, $3, $4)
-        `, docType, string(fieldsJSON), processingMs, c.IP()); err != nil {
-			logAuth(traceID, "audit", "OCR audit insert failed: %v", err)
-		} else {
-			logAuth(traceID, "audit", "OCR audit inserted for type=%s", docType)
-		}
-
-		return c.Status(200).JSON(fiber.Map{
-			"success":       true,
-			"document_type": docType,
-			"fields":        fields,
-			"raw_text":      ocrText,
-			"ocr_source":    "client_ocr",
-			"processing_ms": processingMs,
-			"message":       fmt.Sprintf("%s validated successfully", docType),
 		})
 	}
 }

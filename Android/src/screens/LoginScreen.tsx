@@ -73,8 +73,23 @@ export default function LoginScreen({ navigation, route }: any) {
   const [showScanPrompt, setShowScanPrompt] = useState(false);
   const [loading, setLoading] = useState(false);
   const [connectionState, setConnectionState] = useState<'checking' | 'online' | 'offline'>('checking');
-  const { login, loginAsTourist, continueAsGuest } = useStore();
+  const { login, loginAsTourist, continueAsGuest, lastOcrScan, setLastOcrScan } = useStore();
   const selectedDocLabel = isTourist ? 'Passport' : 'Citizenship';
+
+  useEffect(() => {
+    if (!lastOcrScan) return;
+
+    if (isTourist) {
+      if (lastOcrScan.passportNo) setPassportNo(String(lastOcrScan.passportNo));
+      if (lastOcrScan.name) setFullName(String(lastOcrScan.name));
+      if (lastOcrScan.nationality) setNationality(String(lastOcrScan.nationality));
+      return;
+    }
+
+    if (lastOcrScan.citizenshipNo) {
+      setCitizenshipNo(String(lastOcrScan.citizenshipNo));
+    }
+  }, [lastOcrScan, isTourist]);
 
   useEffect(() => {
     let active = true;
@@ -109,6 +124,13 @@ export default function LoginScreen({ navigation, route }: any) {
       if (passport) setPassportNo(passport);
       if (name) setFullName(name);
       if (nation) setNationality(nation);
+      setLastOcrScan({
+        passportNo: passport,
+        name,
+        nationality: nation,
+        imageUri: fields?.imageUri || '',
+        mode: 'tourist',
+      });
       console.info(`${AUTH_UI_LOG} ocr:tourist-prefill`, {
         passport: maskValue(passport),
         hasName: Boolean(name),
@@ -119,6 +141,11 @@ export default function LoginScreen({ navigation, route }: any) {
 
     const extractedCitizenship = String(fields?.citizenshipNo || fields?.citizenship_no || fields?.citizenship || '').trim();
     if (extractedCitizenship) setCitizenshipNo(extractedCitizenship);
+    setLastOcrScan({
+      citizenshipNo: extractedCitizenship,
+      imageUri: fields?.imageUri || '',
+      mode: 'citizen',
+    });
     console.info(`${AUTH_UI_LOG} ocr:citizen-prefill`, {
       citizenship: maskValue(extractedCitizenship),
     });

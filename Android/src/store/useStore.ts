@@ -40,6 +40,9 @@ interface AppState {
   // Requests — stored locally so citizen can track them
   myRequests: RequestRecord[];
 
+  // OCR cache — used to prefill login/request forms after a verified scan
+  lastOcrScan: Record<string, any> | null;
+
   // Actions
   setLanguage: (lang: string) => void;
   continueAsGuest: () => Promise<void>;
@@ -48,6 +51,7 @@ interface AppState {
   logout: () => Promise<void>;
   addRequest: (req: RequestRecord) => Promise<void>;
   updateRequest: (requestId: string, updates: Partial<RequestRecord>) => Promise<void>;
+  setLastOcrScan: (scan: Record<string, any> | null) => Promise<void>;
   loadFromStorage: () => Promise<void>;
 }
 
@@ -60,6 +64,7 @@ export const useStore = create<AppState>((set, get) => ({
   token: null,
   language: 'ne', // default Nepali
   myRequests: [],
+  lastOcrScan: null,
 
   setLanguage: (lang) => {
     set({ language: lang });
@@ -113,9 +118,18 @@ export const useStore = create<AppState>((set, get) => ({
     set({ myRequests: updated });
   },
 
+  setLastOcrScan: async (scan) => {
+    if (scan) {
+      await AsyncStorage.setItem('last_ocr_scan', JSON.stringify(scan));
+    } else {
+      await AsyncStorage.removeItem('last_ocr_scan');
+    }
+    set({ lastOcrScan: scan });
+  },
+
   loadFromStorage: async () => {
     try {
-      const [token, citizenStr, requestsStr, lang, guestMode, touristMode, touristStr] = await Promise.all([
+      const [token, citizenStr, requestsStr, lang, guestMode, touristMode, touristStr, lastOcrScanStr] = await Promise.all([
         getSecureToken(),
         AsyncStorage.getItem('citizen_data'),
         AsyncStorage.getItem('my_requests'),
@@ -123,6 +137,7 @@ export const useStore = create<AppState>((set, get) => ({
         AsyncStorage.getItem('guest_mode'),
         AsyncStorage.getItem('tourist_mode'),
         AsyncStorage.getItem('tourist_data'),
+        AsyncStorage.getItem('last_ocr_scan'),
       ]);
       set({
         token,
@@ -133,6 +148,7 @@ export const useStore = create<AppState>((set, get) => ({
         tourist: touristStr ? JSON.parse(touristStr) : null,
         myRequests: requestsStr ? JSON.parse(requestsStr) : [],
         language: lang || 'ne',
+        lastOcrScan: lastOcrScanStr ? JSON.parse(lastOcrScanStr) : null,
       });
     } catch (e) {
       console.error('Store load error:', e);

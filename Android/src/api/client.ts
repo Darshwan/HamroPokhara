@@ -186,6 +186,12 @@ export const authAPI = {
     return api.post('/auth/ocr/identity', formData);
   },
 
+  scanOcrDocument: (payload: {
+    image_base64: string;
+    document_type: 'citizenship' | 'nid' | 'license' | 'passport';
+    language?: 'ne' | 'en';
+  }) => api.post('/auth/ocr', payload),
+
   startGuest: () => api.post('/auth/guest/start', {}),
 };
 

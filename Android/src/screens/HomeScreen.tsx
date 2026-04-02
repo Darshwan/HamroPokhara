@@ -103,7 +103,7 @@ const NOTICES = ['Urgent', 'Infrastructure', 'Health', 'Culture', 'Tourism'];
 const STORY_NEWS = [
   {
     title: 'Ward office opens a new online token desk for faster service pickup.',
-    tag: 'Citizen Service',
+    wardLabel: 'Ward 09',
     time: 'JUST NOW',
     image:
       'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80',
@@ -111,7 +111,7 @@ const STORY_NEWS = [
   },
   {
     title: 'Pokhara set to receive cleaner bus stops and better route signage.',
-    tag: 'Transport',
+    wardLabel: 'Ward 08',
     time: '2 HOURS AGO',
     image:
       'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
@@ -119,7 +119,7 @@ const STORY_NEWS = [
   },
   {
     title: 'Water quality testing is now displayed ward-by-ward for residents.',
-    tag: 'Health',
+    wardLabel: 'Ward 10',
     time: '5 HOURS AGO',
     image:
       'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80',
@@ -127,7 +127,7 @@ const STORY_NEWS = [
   },
   {
     title: 'Digital permit queue reduced after the first mobile rollout.',
-    tag: 'E-Service',
+    wardLabel: 'Ward 07',
     time: '8 HOURS AGO',
     image:
       'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
@@ -135,7 +135,7 @@ const STORY_NEWS = [
   },
   {
     title: 'Community festival stories and official notices can live in the same feed.',
-    tag: 'Culture',
+    wardLabel: 'Ward 11',
     time: '1 DAY AGO',
     image:
       'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
@@ -151,6 +151,16 @@ type NoticeFeedItem = {
   content?: string;
   is_urgent?: boolean;
   published_at?: string;
+  ward_code?: string;
+  ward_no?: string | number;
+  ward?: string | number;
+  posted_ward?: string | number;
+  officer_ward?: string | number;
+  posted_by_officer?: {
+    ward_code?: string;
+    ward_no?: string | number;
+    ward?: string | number;
+  };
 };
 
 type SearchResult = {
@@ -270,6 +280,48 @@ export default function HomeScreen({ navigation }: any) {
   }, [searchQuery]);
 
   const menuItems = isTourist ? TOURIST_MENU : CITIZEN_MENU;
+
+  const getNoticeWardLabel = (notice: NoticeFeedItem | undefined, fallbackIndex: number) => {
+    const rawWard =
+      notice?.ward_no ??
+      notice?.ward ??
+      notice?.posted_ward ??
+      notice?.officer_ward ??
+      notice?.ward_code ??
+      notice?.posted_by_officer?.ward_no ??
+      notice?.posted_by_officer?.ward ??
+      notice?.posted_by_officer?.ward_code;
+
+    if (typeof rawWard === 'number') {
+      return `Ward ${String(rawWard).padStart(2, '0')}`;
+    }
+
+    if (typeof rawWard === 'string' && rawWard.trim()) {
+      const wardMatch = rawWard.match(/(\d+)/);
+      if (wardMatch) {
+        return `Ward ${wardMatch[1].padStart(2, '0')}`;
+      }
+      return rawWard.startsWith('Ward') ? rawWard : `Ward ${rawWard}`;
+    }
+
+    return STORY_NEWS[fallbackIndex % STORY_NEWS.length]?.wardLabel || 'Ward 09';
+  };
+
+  const storyCards = useMemo(() => {
+    const source = notices.length ? notices : [];
+
+    if (!source.length) {
+      return STORY_NEWS;
+    }
+
+    return source.slice(0, 5).map((notice, index) => ({
+      title: notice.title || notice.title_ne || 'Notice',
+      wardLabel: getNoticeWardLabel(notice, index),
+      time: notice.published_at ? new Date(notice.published_at).toLocaleString([], { month: 'short', day: 'numeric' }) : index === 0 ? 'JUST NOW' : `${index + 1} HRS AGO`,
+      image: STORY_NEWS[index % STORY_NEWS.length].image,
+      summary: notice.content || 'Open the notice board for more detail.',
+    }));
+  }, [notices]);
 
   const searchableItems = useMemo<SearchResult[]>(() => {
     if (isTourist) {
@@ -496,31 +548,30 @@ export default function HomeScreen({ navigation }: any) {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Top Stories <Text style={styles.sectionSub}>/ Quick updates</Text></Text>
-              <TouchableOpacity onPress={() => setSelectedStory(STORY_NEWS[0])}>
+              <TouchableOpacity onPress={() => setSelectedStory(storyCards[0])}>
                 <Text style={styles.viewAll}>Open</Text>
               </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storyRow}>
-              {STORY_NEWS.map((story, index) => (
+              {storyCards.map((story, index) => (
                 <TouchableOpacity
                   key={`${story.title}-${index}`}
                   activeOpacity={0.9}
-                  style={[styles.storyCard, index === 0 && styles.storyCardFeatured]}
+                  style={styles.storyCard}
                   onPress={() => setSelectedStory(story)}
                 >
                   <ImageBackground source={{ uri: story.image }} style={styles.storyImage} imageStyle={styles.storyImageClip}>
                     <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={StyleSheet.absoluteFill} />
                     <View style={styles.storyTopRow}>
                       <View style={styles.storyBadge}>
-                        <Text style={styles.storyBadgeText}>{story.tag}</Text>
+                        <Text style={styles.storyBadgeText}>{story.wardLabel}</Text>
                       </View>
-                      <View style={styles.storyDot} />
-                    </View>
-                    <View style={styles.storyBottom}>
-                      <Text numberOfLines={2} style={styles.storyTitle}>{story.title}</Text>
-                      <Text style={styles.storyMeta}>{story.time}</Text>
                     </View>
                   </ImageBackground>
+                  <View style={styles.storyCaption}>
+                    <Text numberOfLines={2} style={styles.storyTitle}>{story.title}</Text>
+                    <Text style={styles.storyMeta}>{story.time}</Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -738,8 +789,8 @@ export default function HomeScreen({ navigation }: any) {
             <ImageBackground source={{ uri: selectedStory?.image }} style={styles.storyModalImage} imageStyle={styles.storyModalImageClip}>
               <LinearGradient colors={['rgba(0,0,0,0.12)', 'rgba(0,0,0,0.82)']} style={StyleSheet.absoluteFill} />
               <View style={styles.storyModalContent}>
-                <View style={styles.storyModalHeader}>
-                  <Text style={styles.storyModalTag}>{selectedStory?.tag || 'Update'}</Text>
+                  <View style={styles.storyModalHeader}>
+                    <Text style={styles.storyModalTag}>{selectedStory?.wardLabel || 'Ward 09'}</Text>
                   <TouchableOpacity style={styles.storyModalClose} onPress={() => setSelectedStory(null)}>
                     <MaterialIcons name="close" size={18} color={Colors.primary} />
                   </TouchableOpacity>
@@ -919,34 +970,28 @@ const styles = StyleSheet.create({
   viewAll: { fontSize: 13, fontWeight: '600', color: Colors.primary },
   storyRow: { gap: 12, paddingRight: 12, paddingBottom: 8, marginBottom: 14 },
   storyCard: {
-    width: 148,
-    height: 198,
-    borderRadius: 26,
-    overflow: 'hidden',
-    ...Shadow.md,
-  },
-  storyCardFeatured: {
-    width: 168,
-    height: 214,
+    width: 96,
+    alignItems: 'center',
   },
   storyImage: {
-    flex: 1,
-    justifyContent: 'space-between',
+    width: 86,
+    height: 86,
+    justifyContent: 'flex-start',
   },
   storyImageClip: {
-    borderRadius: 26,
+    borderRadius: 43,
   },
   storyTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    padding: 10,
+    padding: 8,
   },
   storyBadge: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
-    paddingHorizontal: 9,
+    borderColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radius.full,
   },
@@ -957,48 +1002,45 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
-  storyDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#fff',
-    opacity: 0.82,
-  },
-  storyBottom: {
-    padding: 12,
-    gap: 6,
+  storyCaption: {
+    width: '100%',
+    paddingTop: 8,
+    alignItems: 'center',
+    gap: 2,
   },
   storyTitle: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '900',
-    lineHeight: 19,
+    color: Colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 15,
+    textAlign: 'center',
   },
   storyMeta: {
-    color: 'rgba(255,255,255,0.72)',
+    color: Colors.onSurfaceVariant,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.7,
     textTransform: 'uppercase',
+    textAlign: 'center',
   },
   storyModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(12, 20, 18, 0.52)',
-    padding: 16,
+    padding: 20,
     justifyContent: 'center',
   },
   storyModalCard: {
-    borderRadius: 30,
+    borderRadius: 40,
     overflow: 'hidden',
     backgroundColor: Colors.surface,
     ...Shadow.lg,
   },
   storyModalImage: {
-    minHeight: 360,
+    minHeight: 340,
     justifyContent: 'flex-end',
   },
   storyModalImageClip: {
-    borderRadius: 30,
+    borderRadius: 40,
   },
   storyModalContent: {
     padding: 18,

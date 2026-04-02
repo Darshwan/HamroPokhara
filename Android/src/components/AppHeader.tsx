@@ -13,6 +13,7 @@ interface Props {
   showNotif?:   boolean;
   showBack?:    boolean;
   showLang?:    boolean;
+  leftContent?: React.ReactNode;
   onMenu?:      () => void;
   onBack?:      () => void;
   onNotif?:     () => void;
@@ -27,6 +28,7 @@ export default function AppHeader({
   showNotif   = false,
   showBack    = false,
   showLang    = true,
+  leftContent,
   onMenu,
   onBack,
   onNotif,
@@ -49,6 +51,7 @@ export default function AppHeader({
       <View style={h.inner}>
         {/* Left side */}
         <View style={h.left}>
+          {leftContent}
           {showBack && (
             <TouchableOpacity style={h.iconBtn} onPress={onBack}>
               <MaterialIcons name="arrow-back" size={22} color={Colors.primary} />

@@ -75,6 +75,18 @@ const SERVICE_ACCENTS: Record<string, { bg: string; chip: string; icon: string; 
 
 const getAccent = (id: string) => SERVICE_ACCENTS[id] || { bg: '#F8FAFC', chip: '#E2E8F0', icon: Colors.primary, text: Colors.primary };
 
+const SERVICE_CATEGORIES = [
+  { id: 'citizenship', label: 'Citizenship', icon: 'badge', hint: 'Identity & records', screen: 'Verify' },
+  { id: 'permit', label: 'Building Permit', icon: 'domain', hint: 'Plan approval', screen: 'Request' },
+  { id: 'land', label: 'Land Deed', icon: 'terrain', hint: 'Ownership docs', screen: 'Request' },
+];
+
+const POPULAR_FORMS = [
+  { id: 'vital', title: 'Vital Statistics Registration', subtitle: 'Birth, marriage, and death registration', icon: 'groups', screen: 'Request' },
+  { id: 'tax', title: 'Tax Clearance Certificate', subtitle: 'Quick payment and clearance flow', icon: 'receipt-long', screen: 'Request' },
+  { id: 'sifaris', title: 'Sifarish / Recommendation Letter', subtitle: 'Simple ward-level recommendation', icon: 'description', screen: 'Request' },
+];
+
 // ── Main Component ────────────────────────────────────────────
 
 export default function SewaScreen({ navigation }: any) {
@@ -297,13 +309,16 @@ export default function SewaScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader
-        title="Pokhara Sewa Kendra"
-        showMenu
+        title="Pokhara Metro"
+        showMenu={false}
         showNotif
-        showLang
-        onMenu={() => navigation.navigate('Home')}
+        showLang={false}
+        leftContent={(
+          <View style={styles.headerLogo}>
+            <MaterialIcons name="location-city" size={18} color={Colors.primary} />
+          </View>
+        )}
         onNotif={() => Toast.show({ type: 'info', text1: 'No new notifications' })}
-        onLang={() => Toast.show({ type: 'info', text1: 'Language setting is available on main screens' })}
       />
 
       <ScrollView
@@ -311,7 +326,6 @@ export default function SewaScreen({ navigation }: any) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroBadge}>
@@ -323,17 +337,13 @@ export default function SewaScreen({ navigation }: any) {
               <Text style={styles.heroWardText}>Ward {wardCode.split('-')[3] || '9'}</Text>
             </View>
           </View>
-          <Text style={styles.heroTitle}>{language === 'ne' ? 'Core Services' : 'Core Services'}</Text>
-          <Text style={styles.heroSubtitle}>
-            {language === 'ne'
-              ? 'नागरिक सेवाहरू, सहायता, ट्र्याकिङ र रिपोर्टिङ एकै ठाउँमा।'
-              : 'Citizen services, help, tracking, and reporting in one place.'}
-          </Text>
+          <Text style={styles.heroTitle}>Core Services</Text>
+          <Text style={styles.heroSubtitle}>Official Sifaris Portal for Citizens</Text>
           <View style={styles.searchBar}>
             <MaterialIcons name="search" size={18} color={Colors.outline} />
             <TextInput
               style={styles.searchInput}
-              placeholder={language === 'ne' ? 'सेवा खोज्नुहोस्...' : 'Search services...'}
+              placeholder={language === 'ne' ? 'सेवा खोज्नुहोस्...' : "Search for 'Sifaris' forms..."}
               placeholderTextColor={Colors.outline}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -346,348 +356,68 @@ export default function SewaScreen({ navigation }: any) {
               </TouchableOpacity>
             )}
           </View>
-        </View>
-
-        {/* ── AI-OCR SIFARIS CARD (PRATIBIMBA Hero) ─────────────── */}
-        <TouchableOpacity
-          style={styles.pratibimbaCard}
-          onPress={() => navigation.navigate('Request')}
-          activeOpacity={0.9}
-        >
-          <LinearGradient
-            colors={[Colors.primaryContainer, Colors.primary]}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          />
-          <View style={styles.aiOCRBadge}>
-            <MaterialIcons name="auto-awesome" size={12} color="#fff" />
-            <Text style={styles.aiOCRBadgeText}>Powered by Pratibimba AI</Text>
-          </View>
-          <Text style={styles.pratibimbaTitle}>AI-OCR Sifaris</Text>
-          <Text style={styles.pratibimbaDesc}>
-            Scan your citizenship card. Auto-fill your application. Zero typing.
-          </Text>
-          <View style={styles.pratibimbaBtn}>
-            <MaterialIcons name="photo-camera" size={16} color={Colors.primary} />
-            <Text style={styles.pratibimbaBtnText}>Open Camera Scan</Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>{language === 'ne' ? '१२ नागरिक सेवाहरू' : '12 Nagarik Services'}</Text>
-            <MaterialIcons name="apps" size={20} color={Colors.primary} />
-          </View>
-          <View style={styles.featuredGrid}>
-            {featuredServices.filter((item) => isVisible(item.id)).map((item) => (
-              (() => {
-                const accent = getAccent(item.id);
-                return (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.featuredTile, { backgroundColor: accent.bg, borderColor: accent.chip }]}
-                onPress={() => handleOpenNagarikSewa(item.id)}
-                activeOpacity={0.9}
-              >
-                <View style={styles.featuredIconRow}>
-                  <View style={[styles.featuredIconWrap, { backgroundColor: accent.chip }]}>
-                    <MaterialIcons name={item.icon as any} size={20} color={accent.icon} />
-                  </View>
-                  <MaterialIcons name="chevron-right" size={16} color={Colors.outline} />
-                </View>
-                <Text numberOfLines={2} style={[styles.featuredTileText, { color: accent.text }]}>
-                  {language === 'ne' ? item.labelNE : item.label}
-                </Text>
-                <Text style={styles.featuredTileSub}>
-                  {item.id === 'ai' && (language === 'ne' ? 'प्रश्न सोध्नुहोस्' : 'Ask questions')}
-                  {item.id === 'grievance' && (language === 'ne' ? 'समस्या रिपोर्ट' : 'Report issues')}
-                  {item.id === 'hearing' && (language === 'ne' ? 'सार्वजनिक भेटघाट' : 'Public sessions')}
-                  {item.id === 'tax' && (language === 'ne' ? 'कर र दस्तुर' : 'Taxes & fines')}
-                </Text>
-              </TouchableOpacity>
-                );
-              })()
-            ))}
-          </View>
-
-          <Text style={styles.sectionSubhead}>{language === 'ne' ? 'छिटो सेवाहरू' : 'Quick Services'}</Text>
-          <View style={styles.compactRow}>
-            {rowOneServices.filter((item) => isVisible(item.id)).map((item) => (
-              (() => {
-                const accent = getAccent(item.id);
-                return (
-              <TouchableOpacity key={item.id} style={styles.compactTile} onPress={() => handleOpenNagarikSewa(item.id)} activeOpacity={0.85}>
-                <View style={[styles.compactTileIcon, { backgroundColor: accent.chip }]}>
-                  <MaterialIcons name={item.icon as any} size={18} color={accent.icon} />
-                </View>
-                <Text numberOfLines={2} style={[styles.compactTileText, { color: accent.text }]}>{language === 'ne' ? item.labelNE : item.label}</Text>
-              </TouchableOpacity>
-                );
-              })()
-            ))}
-          </View>
-
-          <View style={styles.compactRow}>
-            {rowTwoServices.filter((item) => isVisible(item.id)).map((item) => (
-              (() => {
-                const accent = getAccent(item.id);
-                return (
-              <TouchableOpacity key={item.id} style={styles.compactTile} onPress={() => handleOpenNagarikSewa(item.id)} activeOpacity={0.85}>
-                <View style={[styles.compactTileIcon, { backgroundColor: accent.chip }]}>
-                  <MaterialIcons name={item.icon as any} size={18} color={accent.icon} />
-                </View>
-                <Text numberOfLines={2} style={[styles.compactTileText, { color: accent.text }]}>{language === 'ne' ? item.labelNE : item.label}</Text>
-              </TouchableOpacity>
-                );
-              })()
-            ))}
-          </View>
-
-          {filteredSewas.length === 0 && (
-            <View style={styles.emptyState}>
-              <MaterialIcons name="search-off" size={24} color={Colors.outline} />
-              <Text style={styles.emptyText}>{language === 'ne' ? 'मिलेन' : 'No matching service found'}</Text>
+          <TouchableOpacity style={styles.aiStrip} onPress={() => navigation.navigate('Request')} activeOpacity={0.9}>
+            <View style={styles.aiStripIcon}>
+              <MaterialIcons name="document-scanner" size={20} color={Colors.primary} />
             </View>
-          )}
-        </View>
-
-        {/* ── LIVE STATUS TRACKER (Real Data from PRATIBIMBA) ─────── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Live Status</Text>
-            <MaterialIcons name="pending-actions" size={20} color={Colors.secondary} />
-          </View>
-
-          {myRequests.length === 0 ? (
-            <View style={styles.emptyState}>
-              <MaterialIcons name="inbox" size={32} color={Colors.outline} style={{ opacity: 0.4 }} />
-              <Text style={styles.emptyText}>No active requests</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.aiStripTitle}>AI-OCR Sifaris</Text>
+              <Text style={styles.aiStripDesc}>Scan physical documents to pre-fill forms</Text>
             </View>
-          ) : (
-            <>
-              {/* Progress Steps */}
-              <View style={styles.statusSteps}>
-                {[
-                  { label: 'Submitted',    done: true                                           },
-                  { label: 'In Review',    done: pendingRequests > 0 || approvedRequests > 0   },
-                  { label: 'Ready',        done: approvedRequests > 0                           },
-                ].map((step, i) => (
-                  <React.Fragment key={step.label}>
-                    <View style={styles.statusStep}>
-                      <View style={[styles.statusDot, step.done && styles.statusDotDone]}>
-                        {step.done && <MaterialIcons name="check" size={12} color="#fff" />}
-                        {!step.done && i === 1 && pendingRequests > 0 && (
-                          <View style={styles.statusPulse} />
-                        )}
-                      </View>
-                      <Text style={[styles.statusLabel, step.done && styles.statusLabelDone]}>
-                        {step.label}
-                      </Text>
-                    </View>
-                    {i < 2 && (
-                      <View style={[styles.statusLine, step.done && styles.statusLineDone]} />
-                    )}
-                  </React.Fragment>
-                ))}
-              </View>
-
-              {/* Latest request */}
-              {myRequests[0] && (
-                <View style={styles.latestReq}>
-                  <Text style={styles.latestReqType}>{myRequests[0].document_type.replace(/_/g, ' ')}</Text>
-                  <Text style={styles.latestReqStatus}>{myRequests[0].status}</Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={styles.trackAllBtn}
-                onPress={() => navigation.navigate('Track')}
-              >
-                <Text style={styles.trackAllText}>Track All Applications</Text>
-                <MaterialIcons name="arrow-forward" size={14} color={Colors.primary} />
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        {/* ── TAX PORTAL (Real Data) ─────────────────────────────── */}
-        <TouchableOpacity style={styles.taxCard} activeOpacity={0.88}>
-          <LinearGradient
-            colors={[Colors.secondary, '#8b1a10']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          />
-          <View>
-            <Text style={styles.taxTitle}>Tax Portal</Text>
-            {outstanding > 0 ? (
-              <Text style={styles.taxDesc}>
-                Outstanding: Rs. {outstanding.toLocaleString()} due soon
-              </Text>
-            ) : (
-              <Text style={styles.taxDesc}>All taxes paid. ✓</Text>
-            )}
-          </View>
-          <View style={styles.taxBtns}>
-            <TouchableOpacity style={styles.taxBtnOutline}>
-              <Text style={styles.taxBtnOutlineText}>Details</Text>
-            </TouchableOpacity>
-            {outstanding > 0 && (
-              <TouchableOpacity style={styles.taxBtnFilled}>
-                <Text style={styles.taxBtnFilledText}>Pay Now</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </TouchableOpacity>
-
-        {/* ── MIRROR VAULT (PRATIBIMBA Documents) ────────────────── */}
-        <View style={styles.mirrorCard}>
-          <View style={styles.mirrorLeft}>
-            <Text style={styles.mirrorTitle}>Mirror Vault</Text>
-            <Text style={styles.mirrorDesc}>Your PRATIBIMBA-secured document locker</Text>
-            <View style={styles.mirrorDocIcons}>
-              {['id-card', 'description', 'verified-user'].map((icon, i) => (
-                <View key={i} style={[styles.mirrorDocIcon, { marginLeft: i > 0 ? -8 : 0 }]}>
-                  <MaterialIcons name={icon as any} size={12} color={Colors.primary} />
-                </View>
-              ))}
-              {ledgerDocs.length > 0 && (
-                <Text style={styles.mirrorDocCount}>{ledgerDocs.length} documents</Text>
-              )}
+            <View style={styles.aiStripBtn}>
+              <Text style={styles.aiStripBtnText}>Launch Camera</Text>
             </View>
-          </View>
-          <TouchableOpacity
-            style={styles.mirrorQR}
-            onPress={() => navigation.navigate('Verify')}
-          >
-            <MaterialIcons name="qr-code-2" size={48} color={Colors.primary} />
           </TouchableOpacity>
         </View>
 
-        {/* ── SMALL UTILITY CARDS ROW ────────────────────────────── */}
-        <View style={styles.utilRow}>
-          {/* Water & Electricity */}
-          <View style={[styles.utilCard, { flex: 1 }]}>
-            <View style={styles.utilIcon}>
-              <MaterialIcons name="water-drop" size={18} color="#1d4ed8" />
-            </View>
-            <Text style={styles.utilTitle}>Water &amp; Electricity</Text>
-            <Text style={styles.utilDesc}>NEA &amp; NWSC integration</Text>
-            <TouchableOpacity style={styles.utilBtn}>
-              <Text style={styles.utilBtnText}>Manage Bills</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Queue Token */}
-          <View style={[styles.utilCard, { flex: 1 }]}>
-            <View style={[styles.utilIcon, { backgroundColor: '#fef3c7' }]}>
-              <MaterialIcons name="confirmation-number" size={18} color="#92400e" />
-            </View>
-            <Text style={styles.utilTitle}>Queue Token</Text>
-            {activeToken ? (
-              <View style={styles.activeToken}>
-                <Text style={styles.activeTokenNum}>#{activeToken.token_number}</Text>
-                <Text style={styles.activeTokenTime}>
-                  {new Date(activeToken.estimated_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Categories</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Request')}>
+            <Text style={styles.viewAll}>View All</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.categoryRow}>
+          {SERVICE_CATEGORIES.map((item) => (
+            <TouchableOpacity key={item.id} style={styles.categoryCard} activeOpacity={0.86} onPress={() => navigation.navigate(item.screen)}>
+              <View style={styles.categoryIconWrap}>
+                <MaterialIcons name={item.icon as any} size={20} color={Colors.primary} />
               </View>
-            ) : (
-              <Text style={styles.utilDesc}>Book your spot at Ward office</Text>
-            )}
-            <TouchableOpacity
-              style={[styles.utilBtn, { backgroundColor: Colors.primary }]}
-              onPress={() => setShowQueueModal(true)}
-            >
-              <Text style={[styles.utilBtnText, { color: '#fff' }]}>
-                {activeToken ? 'Update' : 'Book Now'}
-              </Text>
+              <Text style={styles.categoryLabel}>{item.label}</Text>
+              <Text style={styles.categoryHint}>{item.hint}</Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Krisi Anudan */}
-          <View style={[styles.utilCard, { flex: 1 }]}>
-            <View style={[styles.utilIcon, { backgroundColor: '#dcfce7' }]}>
-              <MaterialIcons name="grass" size={18} color="#15803d" />
-            </View>
-            <Text style={styles.utilTitle}>Krisi Anudan</Text>
-            <Text style={styles.utilDesc}>Seed &amp; fertilizer subsidies</Text>
-            <TouchableOpacity style={styles.utilBtn}>
-              <Text style={styles.utilBtnText}>Apply</Text>
-            </TouchableOpacity>
-          </View>
+          ))}
         </View>
 
-        {/* ── REPORT A PROBLEM (Grievance) ───────────────────────── */}
-        <TouchableOpacity
-          style={styles.grievanceHero}
-          onPress={() => setShowGrievanceModal(true)}
-          activeOpacity={0.9}
-        >
-          <LinearGradient
-            colors={[Colors.primaryContainer, '#0c3550']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          />
-          <View style={{ position: 'relative', zIndex: 1 }}>
-            <View style={styles.urgentBadge}>
-              <Text style={styles.urgentText}>Immediate Action</Text>
-              <Text style={styles.urgentNum}>311</Text>
-            </View>
-            <Text style={styles.grievanceTitle}>Report a Problem</Text>
-            <Text style={styles.grievanceDesc}>
-              Report potholes, broken streetlights, or water leakage instantly with GPS auto-tag.
-            </Text>
-            <View style={styles.grievanceBtns}>
-              <View style={styles.grievanceBtn}>
-                <MaterialIcons name="add-a-photo" size={16} color="#fff" />
-                <Text style={styles.grievanceBtnText}>Upload Photo</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Popular Sifaris Forms</Text>
+        </View>
+        <View style={styles.formsList}>
+          {POPULAR_FORMS.filter((item) => !searchQuery || `${item.title} ${item.subtitle}`.toLowerCase().includes(searchQuery.toLowerCase())).map((item, index) => (
+            <TouchableOpacity key={item.id} style={[styles.formCard, index === 0 && styles.formCardFeatured]} activeOpacity={0.9} onPress={() => navigation.navigate(item.screen)}>
+              <View style={styles.formIconWrap}>
+                <MaterialIcons name={item.icon as any} size={18} color={Colors.primary} />
               </View>
-              <View style={[styles.grievanceBtn, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                <MaterialIcons name="my-location" size={16} color="#fff" />
-                <Text style={styles.grievanceBtnText}>Auto-tag Location</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.formTitle}>{item.title}</Text>
+                <Text style={styles.formSubtitle}>{item.subtitle}</Text>
               </View>
-            </View>
-          </View>
-        </TouchableOpacity>
+              <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
+            </TouchableOpacity>
+          ))}
+        </View>
 
-        {/* My Grievances */}
-        {grievances.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>My Reports</Text>
-            {grievances.slice(0, 3).map((g) => (
-              <View key={g.grievance_id} style={styles.grievanceItem}>
-                <View style={[
-                  styles.grievanceItemDot,
-                  { backgroundColor: g.status === 'RESOLVED' ? Colors.success : '#b7791f' }
-                ]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.grievanceItemTitle}>{g.category.replace(/_/g, ' ')}</Text>
-                  <Text style={styles.grievanceItemDesc} numberOfLines={1}>{g.description}</Text>
-                </View>
-                <Text style={[
-                  styles.grievanceItemStatus,
-                  { color: g.status === 'RESOLVED' ? Colors.success : '#b7791f' }
-                ]}>
-                  {g.status}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ── SOCIAL SECURITY ─────────────────────────────────────── */}
-        <View style={styles.bhattaCard}>
-          <View style={styles.bhattaIcon}>
-            <MaterialIcons name="family-restroom" size={36} color="#fff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.bhattaTitle}>Social Security &amp; Allowances</Text>
-            <Text style={styles.bhattaDesc}>
-              Track Briddha Bhatta, Single Mother support, and disability allowances.
-              Disbursed on 1st of every month.
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.bhattaBtn}>
-            <Text style={styles.bhattaBtnText}>Track My Bhatta</Text>
+        <View style={styles.minimalStatusRow}>
+          <TouchableOpacity style={styles.statusMiniCard} onPress={() => navigation.navigate('Track')} activeOpacity={0.9}>
+            <Text style={styles.statusMiniValue}>{myRequests.length}</Text>
+            <Text style={styles.statusMiniLabel}>My Requests</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.statusMiniCard} onPress={() => navigation.navigate('Verify')} activeOpacity={0.9}>
+            <Text style={styles.statusMiniValue}>{ledgerDocs.length}</Text>
+            <Text style={styles.statusMiniLabel}>Documents</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.statusMiniCard} onPress={() => navigation.navigate('Request')} activeOpacity={0.9}>
+            <Text style={styles.statusMiniValue}>{outstanding > 0 ? 'Pay' : 'OK'}</Text>
+            <Text style={styles.statusMiniLabel}>{outstanding > 0 ? 'Due Tax' : 'Tax Clear'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -827,6 +557,8 @@ const styles = StyleSheet.create({
   container:           { flex: 1, backgroundColor: Colors.background },
   scroll:              { padding: 16, gap: 14, paddingBottom: 40 },
 
+  headerLogo:          { width: 34, height: 34, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center' },
+
   heroCard:            { backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 16, borderWidth: 1, borderColor: Colors.outlineVariant, ...Shadow.sm },
   heroTopRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10 },
   heroBadge:           { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primaryFixed, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 6, flexShrink: 1 },
@@ -837,6 +569,34 @@ const styles = StyleSheet.create({
   heroSubtitle:        { fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 4 },
   searchBar:           { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: Colors.outlineVariant },
   searchInput:         { flex: 1, fontSize: 14, color: Colors.onSurface },
+  aiStrip:             { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, padding: 12, borderWidth: 1, borderColor: Colors.outlineVariant },
+  aiStripIcon:         { width: 42, height: 42, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center' },
+  aiStripTitle:        { fontSize: 14, fontWeight: '900', color: Colors.primary },
+  aiStripDesc:         { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 15 },
+  aiStripBtn:          { backgroundColor: '#fff', borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: Colors.outlineVariant },
+  aiStripBtnText:      { fontSize: 11, fontWeight: '800', color: Colors.primary },
+
+  sectionHeader:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+  sectionTitle:        { fontSize: 16, fontWeight: '800', color: Colors.primary },
+  viewAll:             { fontSize: 12, fontWeight: '700', color: Colors.primary },
+
+  categoryRow:         { flexDirection: 'row', gap: 10 },
+  categoryCard:        { flex: 1, backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 12, borderWidth: 1, borderColor: Colors.outlineVariant, alignItems: 'center', minHeight: 110, justifyContent: 'center', ...Shadow.sm },
+  categoryIconWrap:    { width: 38, height: 38, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  categoryLabel:       { fontSize: 11, fontWeight: '800', color: Colors.primary, textAlign: 'center' },
+  categoryHint:        { fontSize: 10, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 14 },
+
+  formsList:           { gap: 10 },
+  formCard:            { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 14, borderWidth: 1, borderColor: Colors.outlineVariant, ...Shadow.sm },
+  formCardFeatured:    { borderColor: Colors.primaryFixed, backgroundColor: Colors.primaryContainer },
+  formIconWrap:        { width: 36, height: 36, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center' },
+  formTitle:           { fontSize: 13, fontWeight: '800', color: Colors.primary, lineHeight: 18 },
+  formSubtitle:        { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 15 },
+
+  minimalStatusRow:    { flexDirection: 'row', gap: 10 },
+  statusMiniCard:      { flex: 1, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', borderWidth: 1, borderColor: Colors.outlineVariant, ...Shadow.sm },
+  statusMiniValue:     { fontSize: 20, fontWeight: '900', color: Colors.primary },
+  statusMiniLabel:     { fontSize: 11, fontWeight: '700', color: Colors.onSurfaceVariant, marginTop: 4, textAlign: 'center' },
 
   // PRATIBIMBA Card
   pratibimbaCard:      { borderRadius: Radius.xxl, padding: 22, overflow: 'hidden', minHeight: 188, justifyContent: 'space-between', ...Shadow.lg },

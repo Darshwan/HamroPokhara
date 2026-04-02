@@ -65,6 +65,11 @@ const normalizeOCRResult = (raw: any): OCRResult => ({
   dob: raw?.dob || raw?.date_of_birth || '',
 });
 
+const extractOCRPayload = (response: any) => {
+  const candidate = response?.fields || response?.extracted || response?.result || response?.data || response?.ocr || response;
+  return candidate?.fields || candidate?.extracted || candidate?.result || candidate?.data || candidate || {};
+};
+
 export default function OCRHybridScreen({
   onResult,
   onClose,
@@ -137,11 +142,17 @@ export default function OCRHybridScreen({
     setLoading(true);
 
     try {
-      const response = await authAPI.scanIdentityDocument(docType, asset.uri, fields.nid || fields.citizenshipNo || fields.passportNo || undefined);
-      const extracted = response?.extracted || response?.fields || response?.result || response?.data || {};
+      const response = await authAPI.scanOcrDocument({
+        image_base64: asset.base64 || '',
+        document_type: docType,
+        language: isTourist ? 'en' : 'ne',
+      });
+
+      const extracted = extractOCRPayload(response);
       console.info(`${AUTH_OCR_LOG} scan:response`, {
         success: Boolean(response?.success !== false),
         keys: Object.keys(extracted || {}),
+        stored: Boolean(response?.stored || response?.saved || response?.scan_id),
       });
       applyOCRFields(extracted, asset.uri);
     } catch (error: any) {

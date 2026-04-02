@@ -3,33 +3,40 @@ package pdf
 import (
 	"bytes"
 	"fmt"
-	"image/png"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/go-pdf/fpdf"
+	gofpdf "github.com/go-pdf/fpdf"
 	"github.com/skip2/go-qrcode"
 
 	"pratibimba/internal/models"
 )
 
-// ── Color Palette ────────────────────────────────────────────
-// Government document colors — formal, trustworthy
-var (
-	colorNavy      = [3]int{0, 51, 102}    // Header background
-	colorGold      = [3]int{180, 140, 40}  // Accent / borders
-	colorDarkGray  = [3]int{50, 50, 50}    // Body text
-	colorMedGray   = [3]int{100, 100, 100} // Secondary text
-	colorLightGray = [3]int{240, 240, 240} // Section backgrounds
-	colorWhite     = [3]int{255, 255, 255}
-	colorGreen     = [3]int{0, 120, 60} // Valid stamp color
-	colorRed       = [3]int{180, 0, 0}  // Alert color
+const (
+	pgW  = 210.0
+	pgH  = 297.0
+	mL   = 12.0
+	mR   = 12.0
+	mT   = 10.0
+	body = pgW - mL - mR
 )
 
-// fontPath returns the path to Devanagari font files.
-// For hackathon: download NotoSansDevanagari-Regular.ttf
-// and NotoSansDevanagari-Bold.ttf into assets/fonts/
+type RGB struct{ R, G, B int }
+
+var (
+	cNavy   = RGB{0, 59, 90}
+	cGold   = RGB{200, 168, 75}
+	cLGray  = RGB{240, 244, 242}
+	cMGray  = RGB{120, 145, 135}
+	cDGray  = RGB{30, 30, 30}
+	cWhite  = RGB{255, 255, 255}
+	cGreen  = RGB{34, 120, 74}
+	cRed    = RGB{176, 42, 30}
+	cGoldBg = RGB{255, 252, 232}
+	cBlue   = RGB{232, 244, 253}
+)
+
 func fontDir() string {
 	if dir := os.Getenv("FONT_DIR"); dir != "" {
 		return dir
@@ -37,486 +44,456 @@ func fontDir() string {
 	return "./assets/fonts"
 }
 
-// Generate creates a complete Sifaris PDF from the given data.
-// Returns PDF bytes ready to stream to the client.
 func Generate(req *models.PDFRequest) (*models.PDFResult, error) {
+	f := gofpdf.New("P", "mm", "A4", "")
 
-	// ── Initialize FPDF ──────────────────────────────────────
-	pdf := fpdf.New("P", "mm", "A4", fontDir())
-	// A4 portrait: 210mm wide × 297mm tall
+	registerFonts(f, fontDir())
 
-	// ── Load Devanagari fonts ────────────────────────────────
-	// NotoSansDevanagari supports full Nepali Unicode
-	regularFont := "NotoSansDevanagari-Regular.ttf"
-	boldFont := "NotoSansDevanagari-Bold.ttf"
+	f.SetMargins(mL, mT, mR)
+	f.SetAutoPageBreak(false, 0)
+	f.AddPage()
 
-	if _, err := os.Stat(filepath.Join(fontDir(), boldFont)); err != nil {
-		boldFont = regularFont
-	}
+	y := mT
+	y = drawBorder(f, y)
+	y = drawHeader(f, req, y)
+	y = drawGoldStrip(f, req, y)
+	y = drawTitle(f, req, y)
+	y = drawDTIDBar(f, req, y)
+	y = drawSectionHeading(f, "व्यक्तिगत विवरण", y)
+	y = drawDetailsTable(f, req, y)
+	y = drawSectionHeading(f, "सिफारिसको उद्देश्य", y)
+	y = drawPurposeBox(f, req, y)
+	y = drawBodyParagraph(f, req, y)
+	y = drawValidityBox(f, req, y)
+	y = drawQRSection(f, req, y)
+	drawOfficerSection(f, req, y)
+	drawFooter(f, req)
 
-	pdf.AddUTF8Font("Devanagari", "", regularFont)
-	pdf.AddUTF8Font("DevanagariB", "B", boldFont)
-
-	// ── Page settings ────────────────────────────────────────
-	pdf.SetMargins(15, 15, 15)
-	pdf.SetAutoPageBreak(true, 20)
-	pdf.AddPage()
-
-	// ── Build the document section by section ────────────────
-	drawBorder(pdf)
-	drawHeader(pdf, req)
-	drawDivider(pdf, colorGold)
-	drawDocumentTitle(pdf, req.DocumentType)
-	drawDivider(pdf, colorGold)
-	drawDTIDBar(pdf, req)
-	drawCitizenDetails(pdf, req)
-	drawPurposeSection(pdf, req)
-	drawBodyText(pdf, req)
-	drawValiditySection(pdf, req)
-	drawQRSection(pdf, req)
-	drawOfficerSection(pdf, req)
-	drawPratibimbaFooter(pdf, req)
-
-	// ── Output to bytes ──────────────────────────────────────
 	var buf bytes.Buffer
-	if err := pdf.Output(&buf); err != nil {
-		return nil, fmt.Errorf("pdf output failed: %w", err)
+	if err := f.Output(&buf); err != nil {
+		return nil, fmt.Errorf("PDF output error: %w", err)
 	}
 
-	filename := fmt.Sprintf("sifaris_%s_%s.pdf",
-		req.DTID,
-		time.Now().Format("20060102"),
-	)
+	b := buf.Bytes()
+	filename := fmt.Sprintf("sifaris_%s_%s.pdf", req.DTID, time.Now().Format("20060102"))
 
 	return &models.PDFResult{
-		Bytes:     buf.Bytes(),
+		Bytes:     b,
 		Filename:  filename,
-		PageCount: pdf.PageCount(),
+		PageCount: f.PageCount(),
 	}, nil
 }
 
-// ── Section Drawers ──────────────────────────────────────────
+func registerFonts(f *gofpdf.Fpdf, dir string) {
+	notoReg := filepath.Join(dir, "NotoSansDevanagari-Regular.ttf")
+	notoBold := filepath.Join(dir, "NotoSansDevanagari-Bold.ttf")
 
-// drawBorder draws the outer decorative border of the document
-func drawBorder(pdf *fpdf.Fpdf) {
-	// Outer border — navy
-	setDrawColor(pdf, colorNavy)
-	pdf.SetLineWidth(1.2)
-	pdf.Rect(8, 8, 194, 281, "D")
+	freeReg := filepath.Join(dir, "FreeSerif.ttf")
+	freeBold := filepath.Join(dir, "FreeSerifBold.ttf")
 
-	// Inner border — gold (thin)
-	setDrawColor(pdf, colorGold)
-	pdf.SetLineWidth(0.4)
-	pdf.Rect(10, 10, 190, 277, "D")
-}
+	sysFreeReg := "/usr/share/fonts/truetype/freefont/FreeSerif.ttf"
+	sysFreeBold := "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf"
 
-// drawHeader draws the government letterhead at the top
-func drawHeader(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-
-	// ── Navy header background ───────────────────────────────
-	setFillColor(pdf, colorNavy)
-	pdf.Rect(10, 10, 190, 42, "F")
-
-	// ── Office name — large centered ────────────────────────
-	setTextColor(pdf, colorWhite)
-	pdf.SetFont("DevanagariB", "B", 16)
-	pdf.SetXY(15, 15)
-	pdf.CellFormat(180, 8, req.OfficeName, "", 1, "C", false, 0, "")
-
-	// ── Sub-title: Ward office ───────────────────────────────
-	pdf.SetFont("DevanagariB", "B", 12)
-	pdf.SetXY(15, 24)
-	pdf.CellFormat(180, 7,
-		fmt.Sprintf("वडा कार्यालय — वडा नं. %s", req.WardNumber),
-		"", 1, "C", false, 0, "")
-
-	// ── District and Province ────────────────────────────────
-	pdf.SetFont("Devanagari", "", 10)
-	pdf.SetXY(15, 32)
-	pdf.CellFormat(180, 6,
-		fmt.Sprintf("%s, %s", req.DistrictName, req.ProvinceName),
-		"", 1, "C", false, 0, "")
-
-	// ── Office contact info row ──────────────────────────────
-	setFillColor(pdf, colorGold)
-	pdf.Rect(10, 52, 190, 8, "F")
-
-	setTextColor(pdf, colorNavy)
-	pdf.SetFont("Devanagari", "", 8)
-	pdf.SetXY(15, 53.5)
-	pdf.CellFormat(85, 5,
-		fmt.Sprintf("फोन: %s", req.OfficePhone),
-		"", 0, "L", false, 0, "")
-	pdf.SetX(110)
-	pdf.CellFormat(85, 5,
-		fmt.Sprintf("इमेल: %s", req.OfficeEmail),
-		"", 1, "R", false, 0, "")
-}
-
-// drawDocumentTitle draws the centered document type heading
-func drawDocumentTitle(pdf *fpdf.Fpdf, docType string) {
-	title := documentTypeToNepali(docType)
-
-	setTextColor(pdf, colorNavy)
-	pdf.SetFont("DevanagariB", "B", 15)
-	pdf.SetXY(15, 67)
-	pdf.CellFormat(180, 10, title, "", 1, "C", false, 0, "")
-}
-
-// drawDTIDBar draws the DTID and issue info in a highlighted bar
-func drawDTIDBar(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	setFillColor(pdf, colorLightGray)
-	pdf.Rect(15, 82, 180, 14, "F")
-
-	// Left: DTID
-	setTextColor(pdf, colorNavy)
-	pdf.SetFont("DevanagariB", "B", 8)
-	pdf.SetXY(18, 83.5)
-	pdf.CellFormat(60, 5, "प्रमाण संख्या (DTID):", "", 1, "L", false, 0, "")
-
-	pdf.SetFont("Devanagari", "", 8)
-	pdf.SetXY(18, 88.5)
-	pdf.CellFormat(90, 5, req.DTID, "", 0, "L", false, 0, "")
-
-	// Right: Issue date and time
-	pdf.SetFont("DevanagariB", "B", 8)
-	pdf.SetXY(120, 83.5)
-	pdf.CellFormat(70, 5, "जारी मिति/समय:", "", 1, "R", false, 0, "")
-
-	pdf.SetFont("Devanagari", "", 8)
-	pdf.SetXY(120, 88.5)
-	pdf.CellFormat(70, 5,
-		fmt.Sprintf("%s  |  %s", req.IssuedDateBS, req.IssuedTimeNP),
-		"", 0, "R", false, 0, "")
-
-	// Hash (short — first 16 chars)
-	shortHash := req.DocumentHash
-	if len(shortHash) > 16 {
-		shortHash = shortHash[:16] + "..."
-	}
-	pdf.SetFont("Devanagari", "", 7)
-	setTextColor(pdf, colorMedGray)
-	pdf.SetXY(18, 94)
-	pdf.CellFormat(180, 4,
-		fmt.Sprintf("कागज Hash: %s", shortHash),
-		"", 1, "L", false, 0, "")
-}
-
-// drawCitizenDetails draws the citizen information table
-func drawCitizenDetails(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	pdf.SetXY(15, 102)
-
-	// Section heading
-	setFillColor(pdf, colorNavy)
-	pdf.Rect(15, 102, 180, 7, "F")
-	setTextColor(pdf, colorWhite)
-	pdf.SetFont("DevanagariB", "B", 10)
-	pdf.SetXY(18, 103)
-	pdf.CellFormat(174, 5, "व्यक्तिगत विवरण", "", 1, "L", false, 0, "")
-
-	// Details rows
-	y := 112.0
-	details := [][]string{
-		{"पूरा नाम:", req.CitizenName},
-		{"नागरिकता नं.:", req.CitizenNID},
-		{"जन्म मिति:", req.CitizenDOB},
-		{"लिङ्ग:", req.CitizenGender},
-		{"बाबुको नाम:", req.FatherName},
-		{"आमाको नाम:", req.MotherName},
-		{"स्थायी ठेगाना:", req.CitizenAddress},
-	}
-
-	for i, row := range details {
-		// Alternating row background
-		if i%2 == 0 {
-			setFillColor(pdf, colorLightGray)
-			pdf.Rect(15, y-1, 180, 7, "F")
+	registered := false
+	for _, pair := range [][2]string{{notoReg, notoBold}, {freeReg, freeBold}, {sysFreeReg, sysFreeBold}} {
+		if fileExists(pair[0]) && fileExists(pair[1]) {
+			f.AddUTF8Font("NP", "", pair[0])
+			f.AddUTF8Font("NPB", "", pair[1])
+			registered = true
+			break
 		}
+	}
+	if !registered {
+		f.SetFont("Helvetica", "", 10)
+	}
 
-		setTextColor(pdf, colorNavy)
-		pdf.SetFont("DevanagariB", "B", 9)
-		pdf.SetXY(18, y)
-		pdf.CellFormat(50, 6, row[0], "", 0, "L", false, 0, "")
+	interReg := filepath.Join(dir, "Inter-Regular.ttf")
+	interBold := filepath.Join(dir, "Inter-Bold.ttf")
+	if fileExists(interReg) && fileExists(interBold) {
+		f.AddUTF8Font("LT", "", interReg)
+		f.AddUTF8Font("LTB", "", interBold)
+		return
+	}
 
-		setTextColor(pdf, colorDarkGray)
-		pdf.SetFont("Devanagari", "", 9)
-		pdf.SetX(68)
-		pdf.CellFormat(120, 6, row[1], "", 1, "L", false, 0, "")
+	poppReg := "/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf"
+	poppBold := "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf"
+	if fileExists(poppReg) && fileExists(poppBold) {
+		f.AddUTF8Font("LT", "", poppReg)
+		f.AddUTF8Font("LTB", "", poppBold)
+		return
+	}
 
-		y += 7
+	if fileExists(sysFreeReg) && fileExists(sysFreeBold) {
+		f.AddUTF8Font("LT", "", sysFreeReg)
+		f.AddUTF8Font("LTB", "", sysFreeBold)
+	} else {
+		f.SetFont("Helvetica", "", 10)
 	}
 }
 
-// drawPurposeSection draws the purpose/reason section
-func drawPurposeSection(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	y := pdf.GetY() + 5
-
-	// Section heading
-	setFillColor(pdf, colorNavy)
-	pdf.Rect(15, y, 180, 7, "F")
-	setTextColor(pdf, colorWhite)
-	pdf.SetFont("DevanagariB", "B", 10)
-	pdf.SetXY(18, y+1)
-	pdf.CellFormat(174, 5, "सिफारिसको उद्देश्य", "", 1, "L", false, 0, "")
-
-	y += 10
-	setFillColor(pdf, colorLightGray)
-	pdf.Rect(15, y, 180, 12, "F")
-
-	setTextColor(pdf, colorDarkGray)
-	pdf.SetFont("Devanagari", "", 10)
-	pdf.SetXY(18, y+2)
-	pdf.MultiCell(174, 6, req.Purpose, "", "L", false)
-
-	if req.AdditionalInfo != "" {
-		pdf.SetFont("Devanagari", "", 9)
-		setTextColor(pdf, colorMedGray)
-		pdf.SetXY(18, pdf.GetY()+1)
-		pdf.MultiCell(174, 5, req.AdditionalInfo, "", "L", false)
-	}
+func drawBorder(f *gofpdf.Fpdf, y float64) float64 {
+	setDraw(f, cNavy)
+	f.SetLineWidth(0.7)
+	f.Rect(4, 4, pgW-8, pgH-8, "D")
+	setDraw(f, cGold)
+	f.SetLineWidth(0.3)
+	f.Rect(6.5, 6.5, pgW-13, pgH-13, "D")
+	f.SetLineWidth(0.3)
+	return y
 }
 
-// drawBodyText draws the formal Sifaris body paragraph
-func drawBodyText(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	y := pdf.GetY() + 6
+func drawHeader(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	const h = 32.0
+	setFill(f, cNavy)
+	f.Rect(6.5, y, pgW-13, h, "F")
 
-	setTextColor(pdf, colorDarkGray)
-	pdf.SetFont("Devanagari", "", 10)
-	pdf.SetXY(15, y)
+	setFill(f, cGold)
+	f.Circle(mL+11, y+h/2, 9, "F")
+	setText(f, cNavy)
+	f.SetFont("LTB", "", 4.5)
+	f.SetXY(mL+6, y+h/2-2.5)
+	f.CellFormat(10, 3, "NEPAL GOVT", "", 0, "C", false, 0, "")
 
-	body := fmt.Sprintf(
-		"माथि उल्लेखित %s यस वडाका स्थायी बासिन्दा हुनुहुन्छ भन्ने "+
-			"कुरा यस वडा कार्यालयको अभिलेखबाट प्रमाणित हुन आएकोले "+
-			"उहाँलाई %s को लागि सिफारिस गरिन्छ। "+
-			"सम्बन्धित निकायले आवश्यक कारबाही गरिदिनु हुन अनुरोध छ।",
+	setText(f, cWhite)
+	f.SetFont("NPB", "", 11.5)
+	f.SetXY(mL+25, y+6)
+	f.CellFormat(body-25, 7, req.OfficeName, "", 1, "C", false, 0, "")
+
+	f.SetFont("NP", "", 8.5)
+	f.SetXY(mL+25, y+14)
+	f.CellFormat(body-25, 5, fmt.Sprintf("वडा नं. %s", req.WardNumber), "", 1, "C", false, 0, "")
+
+	setText(f, cGold)
+	f.SetFont("NP", "", 7.5)
+	f.SetXY(mL+25, y+20)
+	f.CellFormat(body-25, 5, req.DistrictName+" — "+req.ProvinceName, "", 1, "C", false, 0, "")
+
+	return y + h
+}
+
+func drawGoldStrip(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	const h = 6.5
+	setFill(f, cGold)
+	f.Rect(6.5, y, pgW-13, h, "F")
+	setText(f, cNavy)
+	f.SetFont("LT", "", 6.5)
+	f.SetXY(mL, y+1.2)
+	f.CellFormat(body, 4, "Phone: "+req.OfficePhone+" | Email: "+req.OfficeEmail, "", 0, "C", false, 0, "")
+	return y + h + 2
+}
+
+func drawTitle(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	setText(f, cNavy)
+	f.SetFont("NPB", "", 13)
+	f.SetXY(mL, y)
+	f.CellFormat(body, 8, documentTypeToNepali(req.DocumentType), "", 1, "C", false, 0, "")
+
+	setDraw(f, cGold)
+	f.SetLineWidth(0.8)
+	mid := pgW / 2
+	f.Line(mid-25, y+9, mid+25, y+9)
+	f.SetLineWidth(0.3)
+	return y + 13
+}
+
+func drawDTIDBar(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	const h = 10.5
+	setFill(f, cLGray)
+	setDraw(f, cNavy)
+	f.SetLineWidth(0.25)
+	f.Rect(mL, y, body, h, "FD")
+
+	setText(f, cNavy)
+	f.SetFont("LTB", "", 7)
+	f.SetXY(mL+2, y+1.5)
+	f.CellFormat(50, 4, "DTID:", "", 0, "L", false, 0, "")
+	f.SetFont("LT", "", 7)
+	f.SetX(mL + 14)
+	f.CellFormat(90, 4, req.DTID, "", 0, "L", false, 0, "")
+
+	setText(f, cMGray)
+	f.SetFont("LT", "", 5.5)
+	shortH := req.DocumentHash
+	if len(shortH) > 20 {
+		shortH = shortH[:20] + "..."
+	}
+	f.SetXY(mL+2, y+6)
+	f.CellFormat(90, 3, "SHA-256: "+shortH, "", 0, "L", false, 0, "")
+
+	setText(f, cNavy)
+	f.SetFont("NP", "", 6.5)
+	f.SetXY(mL, y+1.5)
+	f.CellFormat(body-2, 4, "मिति: "+req.IssuedDateBS, "", 1, "R", false, 0, "")
+	f.SetFont("NP", "", 6.5)
+	f.SetXY(mL, y+6)
+	f.CellFormat(body-2, 3, "समय: "+req.IssuedTimeNP, "", 0, "R", false, 0, "")
+
+	return y + h + 3
+}
+
+func drawSectionHeading(f *gofpdf.Fpdf, title string, y float64) float64 {
+	const h = 6.5
+	setFill(f, cNavy)
+	f.Rect(mL, y, body, h, "F")
+	setText(f, cWhite)
+	f.SetFont("NPB", "", 8.5)
+	f.SetXY(mL+2, y+1)
+	f.CellFormat(body-4, 5, title, "", 0, "L", false, 0, "")
+	return y + h
+}
+
+func drawDetailsTable(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	type row struct{ Label, Value string }
+	rows := []row{
+		{"पूरा नाम (Full Name):", req.CitizenName},
+		{"राष्ट्रिय परिचय / नागरिकता:", req.CitizenNID},
+		{"जन्म मिति (DOB):", req.CitizenDOB},
+		{"लिङ्ग (Gender):", req.CitizenGender},
+		{"बाबुको नाम (Father):", req.FatherName},
+		{"आमाको नाम (Mother):", req.MotherName},
+		{"स्थायी ठेगाना (Address):", req.CitizenAddress},
+	}
+
+	const rowH = 6.0
+	const lblW = 56.0
+	const valW = body - lblW - 1
+
+	for i, r := range rows {
+		rowY := y + float64(i)*rowH
+		if i%2 == 0 {
+			setFill(f, cLGray)
+			f.Rect(mL, rowY, body, rowH, "F")
+		}
+		setDraw(f, RGB{200, 214, 210})
+		f.SetLineWidth(0.2)
+		f.Line(mL, rowY, mL+body, rowY)
+		f.Line(mL+lblW, rowY, mL+lblW, rowY+rowH)
+
+		setText(f, cNavy)
+		f.SetFont("NPB", "", 7)
+		f.SetXY(mL+2, rowY+1.5)
+		f.CellFormat(lblW-3, 4, r.Label, "", 0, "L", false, 0, "")
+
+		setText(f, cDGray)
+		f.SetFont("NP", "", 7)
+		f.SetXY(mL+lblW+2, rowY+1.5)
+		f.CellFormat(valW-2, 4, r.Value, "", 0, "L", false, 0, "")
+	}
+
+	return y + float64(len(rows))*rowH + 3
+}
+
+func drawPurposeBox(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	const h = 16.0
+	setFill(f, cBlue)
+	setDraw(f, RGB{133, 183, 217})
+	f.SetLineWidth(0.4)
+	f.Rect(mL, y, body, h, "FD")
+
+	setText(f, cNavy)
+	f.SetFont("NPB", "", 8)
+	f.SetXY(mL+3, y+2)
+	f.CellFormat(30, 5, "उद्देश्य:", "", 0, "L", false, 0, "")
+	f.SetFont("NP", "", 8)
+	f.SetX(mL + 22)
+	f.CellFormat(body-25, 5, req.Purpose, "", 1, "L", false, 0, "")
+
+	setText(f, cDGray)
+	f.SetFont("NP", "", 7.5)
+	f.SetXY(mL+3, y+8)
+	formal := req.AdditionalInfo
+	if formal == "" {
+		formal = req.Purpose
+	}
+	runes := []rune(formal)
+	if len(runes) > 85 {
+		formal = string(runes[:82]) + "..."
+	}
+	f.CellFormat(body-6, 5, formal, "", 0, "L", false, 0, "")
+
+	return y + h + 3
+}
+
+func drawBodyParagraph(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	bodyText := fmt.Sprintf(
+		"प्रस्तुत %s वडा नं. %s का स्थायी बासिन्दा भएको यस वडाको अभिलेखबाट प्रमाणित हुन आउँदा उहाँलाई माथि उल्लेखित उद्देश्यको लागि यो सिफारिस पत्र जारी गरिएको छ । सम्बन्धित निकायले आवश्यक सहयोग गरिदिनुहुन अनुरोध छ ।",
 		req.CitizenName,
-		req.Purpose,
+		req.WardNumber,
 	)
 
-	pdf.MultiCell(180, 6, body, "", "J", false)
+	setText(f, cDGray)
+	f.SetFont("NP", "", 8.5)
+	f.SetXY(mL, y)
+	f.MultiCell(body, 5, bodyText, "", "J", false)
+	newY := f.GetY()
+
+	return newY + 3
 }
 
-// drawValiditySection draws the validity period warning box
-func drawValiditySection(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	y := pdf.GetY() + 4
+func drawValidityBox(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	const h = 7.0
+	setFill(f, cGoldBg)
+	setDraw(f, cGold)
+	f.SetLineWidth(0.5)
+	f.Rect(mL, y, body, h, "FD")
 
-	// Gold border box
-	setDrawColor(pdf, colorGold)
-	setFillColor(pdf, [3]int{255, 251, 230}) // very light yellow
-	pdf.SetLineWidth(0.6)
-	pdf.Rect(15, y, 180, 10, "FD")
+	setText(f, cRed)
+	f.SetFont("NPB", "", 7.5)
+	f.SetXY(mL+3, y+1.5)
+	f.CellFormat(25, 4, "मान्यता:", "", 0, "L", false, 0, "")
 
-	setTextColor(pdf, colorRed)
-	pdf.SetFont("DevanagariB", "B", 9)
-	pdf.SetXY(18, y+1.5)
-	pdf.CellFormat(60, 6, "मान्यता अवधि:", "", 0, "L", false, 0, "")
-
-	setTextColor(pdf, colorDarkGray)
-	pdf.SetFont("Devanagari", "", 9)
-	pdf.SetX(60)
-	pdf.CellFormat(130, 6,
-		fmt.Sprintf("यो सिफारिस %s सम्म मात्र मान्य हुनेछ।",
-			req.ValidUntilBS),
-		"", 0, "L", false, 0, "")
-}
-
-// drawQRSection draws the QR code and verification URL
-func drawQRSection(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	y := pdf.GetY() + 6
-
-	// ── Generate QR code as PNG bytes ────────────────────────
-	qrBytes, err := qrcode.Encode(req.VerifyURL, qrcode.High, 256)
-	if err != nil {
-		// If QR fails, draw placeholder box and continue
-		drawQRPlaceholder(pdf, y)
-		return
+	valid := req.ValidUntilBS
+	if valid == "" {
+		valid = FormatValidUntil(req.IssuedAtUTC)
 	}
 
-	// Register PNG image from bytes
-	imgOpts := fpdf.ImageOptions{
-		ImageType: "PNG",
-		ReadDpi:   true,
+	setText(f, cDGray)
+	f.SetFont("NP", "", 7.5)
+	f.SetX(mL + 30)
+	f.CellFormat(100, 4, valid+" सम्म मात्र मान्य", "", 0, "L", false, 0, "")
+
+	setText(f, cGreen)
+	f.SetFont("NP", "", 7)
+	f.SetX(mL + 130)
+	f.CellFormat(body-133, 4, "PRATIBIMBA प्रमाणित", "", 0, "R", false, 0, "")
+
+	return y + h + 4
+}
+
+func drawQRSection(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) float64 {
+	const qrSize = 28.0
+	qrX := mL + body - qrSize
+	qrY := y
+
+	verifyURL := req.VerifyURL
+	if verifyURL == "" {
+		verifyURL = "https://verify.pratibimba.gov.np/" + req.DTID
 	}
-	imgReader := bytes.NewReader(qrBytes)
 
-	// Validate it's a valid PNG
-	if _, err := png.Decode(bytes.NewReader(qrBytes)); err != nil {
-		drawQRPlaceholder(pdf, y)
-		return
+	qrPNG, err := qrcode.Encode(verifyURL, qrcode.High, 256)
+	if err == nil {
+		imgName := "qr_" + req.DTID
+		f.RegisterImageOptionsReader(
+			imgName,
+			gofpdf.ImageOptions{ImageType: "PNG"},
+			bytes.NewReader(qrPNG),
+		)
+		f.ImageOptions(imgName, qrX, qrY, qrSize, qrSize, false,
+			gofpdf.ImageOptions{ImageType: "PNG"}, 0, "")
+	} else {
+		setDraw(f, cNavy)
+		f.SetLineWidth(0.5)
+		f.Rect(qrX, qrY, qrSize, qrSize, "D")
+		setText(f, cMGray)
+		f.SetFont("NP", "", 6)
+		f.SetXY(qrX, qrY+11)
+		f.CellFormat(qrSize, 5, "QR Code", "", 0, "C", false, 0, "")
 	}
 
-	// ── QR section layout ────────────────────────────────────
-	// QR on the right, verification text on the left
+	setText(f, cNavy)
+	f.SetFont("NPB", "", 8)
+	f.SetXY(mL, y)
+	f.CellFormat(body-qrSize-5, 5, "डिजिटल प्रमाणीकरण", "", 1, "L", false, 0, "")
 
-	// Left side — verification instructions
-	setTextColor(pdf, colorNavy)
-	pdf.SetFont("DevanagariB", "B", 9)
-	pdf.SetXY(15, y)
-	pdf.CellFormat(120, 6, "डिजिटल प्रमाणीकरण", "", 1, "L", false, 0, "")
+	setText(f, cDGray)
+	f.SetFont("NP", "", 7.5)
+	f.SetXY(mL, y+6)
+	f.CellFormat(body-qrSize-5, 4.5, "यो कागज PRATIBIMBA राष्ट्रिय प्रणालीमा दर्ता", "", 1, "L", false, 0, "")
+	f.SetXY(mL, y+11)
+	f.CellFormat(body-qrSize-5, 4.5, "छ । QR स्क्यान गरेर प्रमाणित गर्नुस् ।", "", 1, "L", false, 0, "")
 
-	setTextColor(pdf, colorDarkGray)
-	pdf.SetFont("Devanagari", "", 8)
-	pdf.SetXY(15, y+7)
-	pdf.MultiCell(115, 5,
-		"यो कागज PRATIBIMBA राष्ट्रिय प्रणालीमा दर्ता छ। "+
-			"दायाँतर्फको QR कोड स्क्यान गरेर वा तलको URL मा "+
-			"गएर यो कागजको प्रामाणिकता तुरुन्त जाँच गर्न सकिन्छ।",
-		"", "L", false)
+	urlY := y + 17
+	setFill(f, cLGray)
+	setDraw(f, RGB{192, 212, 204})
+	f.SetLineWidth(0.2)
+	f.Rect(mL, urlY, body-qrSize-5, 5.5, "FD")
+	setText(f, cNavy)
+	f.SetFont("LT", "", 5.5)
+	f.SetXY(mL+1.5, urlY+1)
+	f.CellFormat(body-qrSize-8, 3.5, verifyURL, "", 0, "L", false, 0, "")
 
-	// Verification URL box
-	urlY := pdf.GetY() + 2
-	setFillColor(pdf, colorLightGray)
-	setDrawColor(pdf, colorNavy)
-	pdf.SetLineWidth(0.3)
-	pdf.Rect(15, urlY, 115, 8, "FD")
+	setText(f, cGreen)
+	f.SetFont("NP", "", 7)
+	f.SetXY(mL, urlY+7)
+	f.CellFormat(body-qrSize-5, 4, "PRATIBIMBA राष्ट्रिय अखण्डता प्रणालीद्वारा सुरक्षित", "", 0, "L", false, 0, "")
 
-	setTextColor(pdf, colorNavy)
-	pdf.SetFont("Devanagari", "", 7)
-	pdf.SetXY(17, urlY+1.5)
-	pdf.CellFormat(111, 5, "URL: "+req.VerifyURL, "", 0, "L", false, 0, "")
-
-	// PRATIBIMBA branding under URL
-	pdf.SetFont("Devanagari", "", 7)
-	setTextColor(pdf, colorGreen)
-	pdf.SetXY(15, urlY+10)
-	pdf.CellFormat(115, 5,
-		"PRATIBIMBA राष्ट्रिय अखण्डता प्रणालीद्वारा सुरक्षित",
-		"", 0, "L", false, 0, "")
-
-	// Right side — QR code image
-	// Place at right side, aligned with section start
-	pdf.RegisterImageOptionsReader("qr_"+req.DTID, imgOpts, imgReader)
-	pdf.ImageOptions(
-		"qr_"+req.DTID,
-		155, y, // X, Y position
-		35, 35, // Width, Height in mm
-		false, imgOpts, 0, "",
-	)
-
-	// "QR स्क्यान गर्नुस्" label under QR
-	setTextColor(pdf, colorMedGray)
-	pdf.SetFont("Devanagari", "", 7)
-	pdf.SetXY(155, y+36)
-	pdf.CellFormat(35, 4, "QR स्क्यान गर्नुस्", "", 0, "C", false, 0, "")
+	return y + qrSize + 5
 }
 
-// drawQRPlaceholder draws a box if QR generation fails
-func drawQRPlaceholder(pdf *fpdf.Fpdf, y float64) {
-	setDrawColor(pdf, colorNavy)
-	pdf.SetLineWidth(0.5)
-	pdf.Rect(155, y, 35, 35, "D")
-	setTextColor(pdf, colorMedGray)
-	pdf.SetFont("Devanagari", "", 7)
-	pdf.SetXY(155, y+16)
-	pdf.CellFormat(35, 5, "QR", "", 0, "C", false, 0, "")
+func drawOfficerSection(f *gofpdf.Fpdf, req *models.PDFRequest, y float64) {
+	setDraw(f, cGold)
+	f.SetLineWidth(0.5)
+	f.SetDashPattern([]float64{2, 1.5}, 0)
+	f.Rect(mL, y, 46, 24, "D")
+	f.SetDashPattern([]float64{}, 0)
+	setText(f, cMGray)
+	f.SetFont("NP", "", 7)
+	f.SetXY(mL, y+11)
+	f.CellFormat(46, 5, "कार्यालयको छाप", "", 0, "C", false, 0, "")
+
+	sigX := mL + body - 68.0
+	setDraw(f, cDGray)
+	f.SetLineWidth(0.4)
+	f.Line(sigX, y+20, mL+body, y+20)
+
+	setText(f, cNavy)
+	f.SetFont("NPB", "", 8)
+	f.SetXY(sigX, y+22)
+	f.CellFormat(68, 5, req.OfficerName, "", 1, "C", false, 0, "")
+
+	setText(f, cMGray)
+	f.SetFont("NP", "", 7)
+	f.SetXY(sigX, y+27)
+	desig := req.OfficerDesig
+	if desig == "" {
+		desig = "Ward Officer"
+	}
+	f.CellFormat(68, 4, desig, "", 0, "C", false, 0, "")
 }
 
-// drawOfficerSection draws the signature and stamp section
-func drawOfficerSection(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	y := pdf.GetY() + 10
+func drawFooter(f *gofpdf.Fpdf, req *models.PDFRequest) {
+	const footerH = 8.0
+	const footerY = pgH - 11
 
-	// ── Left: Stamp area ─────────────────────────────────────
-	setDrawColor(pdf, colorGold)
-	pdf.SetLineWidth(0.5)
-	pdf.SetDashPattern([]float64{2, 1}, 0)
-	pdf.Rect(20, y, 50, 30, "D")
-	pdf.SetDashPattern([]float64{}, 0) // reset dash
+	setFill(f, cNavy)
+	f.Rect(6.5, footerY, pgW-13, footerH, "F")
 
-	setTextColor(pdf, colorMedGray)
-	pdf.SetFont("Devanagari", "", 8)
-	pdf.SetXY(20, y+13)
-	pdf.CellFormat(50, 5, "कार्यालयको छाप", "", 0, "C", false, 0, "")
+	setText(f, cGold)
+	f.SetFont("NPB", "", 7)
+	f.SetXY(mL, footerY+1.5)
+	f.CellFormat(body*0.6, 4, "PRATIBIMBA — राष्ट्रिय कागज अखण्डता प्रणाली", "", 0, "L", false, 0, "")
 
-	// ── Right: Signature area ─────────────────────────────────
-	signX := 120.0
+	setText(f, cWhite)
+	f.SetFont("LT", "", 5.5)
+	f.SetXY(mL, footerY+5.5)
+	f.CellFormat(body*0.7, 3, "Nepal Electronic Transactions Act 2063 — Digitally Authenticated", "", 0, "L", false, 0, "")
 
-	// Signature line
-	setDrawColor(pdf, colorDarkGray)
-	pdf.SetLineWidth(0.4)
-	pdf.Line(signX, y+25, signX+65, y+25)
-
-	// Officer name
-	setTextColor(pdf, colorDarkGray)
-	pdf.SetFont("DevanagariB", "B", 9)
-	pdf.SetXY(signX, y+26)
-	pdf.CellFormat(65, 5, req.OfficerName, "", 1, "C", false, 0, "")
-
-	// Designation
-	pdf.SetFont("Devanagari", "", 8)
-	setTextColor(pdf, colorMedGray)
-	pdf.SetXY(signX, y+31)
-	pdf.CellFormat(65, 5, req.OfficerDesig, "", 1, "C", false, 0, "")
-
-	// Ward
-	pdf.SetXY(signX, y+36)
-	pdf.CellFormat(65, 5,
-		fmt.Sprintf("वडा नं. %s, %s", req.WardNumber, req.DistrictName),
-		"", 1, "C", false, 0, "")
+	setFill(f, cGold)
+	f.Circle(pgW-22, footerY+4, 4, "F")
+	setText(f, cNavy)
+	f.SetFont("LTB", "", 4)
+	f.SetXY(pgW-30, footerY+2.5)
+	f.CellFormat(16, 3, "PRATIBIMBA", "", 1, "C", false, 0, "")
+	f.SetXY(pgW-30, footerY+5)
+	f.CellFormat(16, 3, "VERIFIED", "", 0, "C", false, 0, "")
 }
 
-// drawPratibimbaFooter draws the bottom security footer
-func drawPratibimbaFooter(pdf *fpdf.Fpdf, req *models.PDFRequest) {
-	// Position at bottom of page
-	pdf.SetXY(10, 270)
-
-	// Full-width footer background
-	setFillColor(pdf, colorNavy)
-	pdf.Rect(10, 270, 190, 18, "F")
-
-	// Top line of footer — PRATIBIMBA branding
-	setTextColor(pdf, colorGold)
-	pdf.SetFont("DevanagariB", "B", 8)
-	pdf.SetXY(15, 271.5)
-	pdf.CellFormat(180, 5,
-		"PRATIBIMBA — राष्ट्रिय कागज अखण्डता तथा प्रमाणीकरण प्रणाली",
-		"", 1, "C", false, 0, "")
-
-	// Second line — DTID and hash reference
-	setTextColor(pdf, colorWhite)
-	pdf.SetFont("Devanagari", "", 7)
-	pdf.SetXY(15, 277)
-	pdf.CellFormat(90, 4,
-		fmt.Sprintf("DTID: %s", req.DTID),
-		"", 0, "L", false, 0, "")
-	pdf.SetX(110)
-	pdf.CellFormat(85, 4,
-		fmt.Sprintf("जारी: %s  |  मान्य: %s सम्म",
-			req.IssuedDateBS, req.ValidUntilBS),
-		"", 0, "R", false, 0, "")
-
-	// Third line — legal notice
-	setTextColor(pdf, [3]int{180, 180, 180})
-	pdf.SetFont("Devanagari", "", 6.5)
-	pdf.SetXY(15, 282)
-	pdf.CellFormat(180, 4,
-		"यो कागज नेपाल सरकारको इलेक्ट्रोनिक कारोबार ऐन, २०६३ अन्तर्गत कानुनी मान्यता प्राप्त छ।",
-		"", 0, "C", false, 0, "")
+func setFill(f *gofpdf.Fpdf, c RGB) {
+	f.SetFillColor(c.R, c.G, c.B)
 }
 
-// drawDivider draws a horizontal divider line
-func drawDivider(pdf *fpdf.Fpdf, color [3]int) {
-	y := pdf.GetY() + 1
-	setDrawColor(pdf, color)
-	pdf.SetLineWidth(0.5)
-	pdf.Line(15, y, 195, y)
-	pdf.SetY(y + 2)
+func setDraw(f *gofpdf.Fpdf, c RGB) {
+	f.SetDrawColor(c.R, c.G, c.B)
 }
 
-// ── Color Helpers ────────────────────────────────────────────
-
-func setFillColor(pdf *fpdf.Fpdf, c [3]int) {
-	pdf.SetFillColor(c[0], c[1], c[2])
+func setText(f *gofpdf.Fpdf, c RGB) {
+	f.SetTextColor(c.R, c.G, c.B)
 }
 
-func setTextColor(pdf *fpdf.Fpdf, c [3]int) {
-	pdf.SetTextColor(c[0], c[1], c[2])
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
-
-func setDrawColor(pdf *fpdf.Fpdf, c [3]int) {
-	pdf.SetDrawColor(c[0], c[1], c[2])
-}
-
-// ── Document Type Translator ─────────────────────────────────
 
 func documentTypeToNepali(docType string) string {
 	switch docType {
@@ -538,26 +515,29 @@ func documentTypeToNepali(docType string) string {
 		return "जग्गा दर्ता प्रमाणपत्र"
 	case "CONTRACT_AWARD":
 		return "ठेक्का स्वीकृति पत्र"
+	case "BUDGET_ALLOCATION":
+		return "बजेट विनियोजन पत्र"
 	default:
 		return "सरकारी कागज"
 	}
 }
 
-// ── Nepali Date Helpers ──────────────────────────────────────
-
-// NepaliMonths maps month numbers to Nepali month names
 var NepaliMonths = map[int]string{
-	1: "बैशाख", 2: "जेठ", 3: "असार",
-	4: "श्रावण", 5: "भाद्र", 6: "असोज",
-	7: "कार्तिक", 8: "मंसिर", 9: "पुस",
-	10: "माघ", 11: "फाल्गुन", 12: "चैत्र",
+	1:  "बैशाख",
+	2:  "जेठ",
+	3:  "असार",
+	4:  "श्रावण",
+	5:  "भाद्र",
+	6:  "असोज",
+	7:  "कार्तिक",
+	8:  "मंसिर",
+	9:  "पुस",
+	10: "माघ",
+	11: "फाल्गुन",
+	12: "चैत्र",
 }
 
-// FormatNepaliDate formats a time.Time as a Nepali BS date string.
-// Uses approximate conversion — replace with full BS calendar in production.
-// Returns format: "२०८२ भाद्र १५"
 func FormatNepaliDate(t time.Time) string {
-	// Approximate BS year (proper conversion needs full calendar lookup)
 	bsYear := t.Year() + 57
 	month := int(t.Month())
 	day := t.Day()
@@ -574,8 +554,6 @@ func FormatNepaliDate(t time.Time) string {
 	)
 }
 
-// FormatNepaliTime formats time as Nepali time string
-// Returns format: "दिउसो २:३५"
 func FormatNepaliTime(t time.Time) string {
 	hour := t.Hour()
 	min := t.Minute()
@@ -609,7 +587,6 @@ func FormatNepaliTime(t time.Time) string {
 	)
 }
 
-// toDevanagariNumerals converts an integer to Devanagari numeral string
 func toDevanagariNumerals(n int) string {
 	devanagari := []rune{'०', '१', '२', '३', '४', '५', '६', '७', '८', '९'}
 	s := fmt.Sprintf("%d", n)
@@ -624,8 +601,10 @@ func toDevanagariNumerals(n int) string {
 	return string(result)
 }
 
-// FormatValidUntil returns a date 30 days after issuance in Nepali format
 func FormatValidUntil(issuedAt time.Time) string {
+	if issuedAt.IsZero() {
+		issuedAt = time.Now()
+	}
 	validUntil := issuedAt.AddDate(0, 0, 30)
 	return FormatNepaliDate(validUntil)
 }

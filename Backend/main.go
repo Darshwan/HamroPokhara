@@ -86,6 +86,7 @@ func main() {
 	auth.Post("/tourist/login", handlers.TouristLogin(db))
 	auth.Post("/guest", handlers.GuestSession(db))
 	auth.Post("/ocr", handlers.ProcessDocumentOCR(db))
+	auth.Post("/ocr/validate", handlers.ValidateOCRResult(db))
 
 	// ── Tourist Routes ──────────────────────────────────────
 	tourist := app.Group("/tourist")
