@@ -73,7 +73,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() {
+  useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 2800);
     return () => clearTimeout(t);
@@ -531,6 +531,7 @@ export default function Home() {
               )}
             </div>
           )}
+          </div>
         </section>
       </div>
 

@@ -86,6 +86,18 @@ func (db *DB) ensureCoreAuthSchema(ctx context.Context) error {
 			ip_address       VARCHAR(45),
 			created_at       TIMESTAMPTZ   DEFAULT NOW()
 		)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS citizen_dob VARCHAR(30)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS citizen_gender VARCHAR(20)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS citizen_address VARCHAR(200)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS father_name VARCHAR(100)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS mother_name VARCHAR(100)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS approved_by_officer_id VARCHAR(60)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS document_hash VARCHAR(64)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS issued_date_bs VARCHAR(40)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS issued_time_np VARCHAR(40)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS valid_until_bs VARCHAR(40)`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`,
+		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS issued_at TIMESTAMPTZ`,
 	}
 
 	for _, statement := range statements {
