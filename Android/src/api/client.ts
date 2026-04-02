@@ -3,6 +3,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const API_BASE = 'http://192.168.100.44:8080'; // ← Your IP
 
 const REQUEST_TIMEOUT_MS = 15000;
+const AUTH_LOG_TAG = '[AuthAPI]';
+
+const isAuthPath = (path: string) => path.startsWith('/auth/');
+
+const summarizePayload = (body: any) => {
+  if (body === undefined || body === null) return { kind: 'none' };
+  if (body instanceof FormData) return { kind: 'form-data' };
+  if (typeof body !== 'object') return { kind: typeof body };
+
+  const entries = Object.keys(body).map((key) => {
+    const raw = body[key];
+    const value = typeof raw === 'string' ? `[len:${raw.length}]` : raw === undefined || raw === null ? 'empty' : typeof raw;
+    return [key, value];
+  });
+
+  return {
+    kind: 'json',
+    fields: Object.fromEntries(entries),
+  };
+};
 
 const withTimeout = async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const controller = new AbortController();
@@ -29,6 +49,17 @@ const request = async (
   body?: any,
   headers?: Record<string, string>
 ) => {
+  const authRoute = isAuthPath(path);
+  const startedAt = Date.now();
+
+  if (authRoute) {
+    console.info(`${AUTH_LOG_TAG} request:start`, {
+      method,
+      path,
+      payload: summarizePayload(body),
+    });
+  }
+
   const token = await AsyncStorage.getItem('pratibimba_token');
   const normalizedHeaders: Record<string, string> = {
     ...(headers || {}),
@@ -56,11 +87,36 @@ const request = async (
     const data = await parseResponseBody(response);
 
     if (!response.ok) {
+      if (authRoute) {
+        console.warn(`${AUTH_LOG_TAG} request:failed`, {
+          method,
+          path,
+          status: response.status,
+          durationMs: Date.now() - startedAt,
+          message: (data as any)?.message || 'Request failed',
+        });
+      }
       return { success: false, status: response.status, ...(data || {}) };
+    }
+
+    if (authRoute) {
+      console.info(`${AUTH_LOG_TAG} request:success`, {
+        method,
+        path,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+      });
     }
 
     return data;
   } catch {
+    if (authRoute) {
+      console.error(`${AUTH_LOG_TAG} request:offline-or-timeout`, {
+        method,
+        path,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     return { success: false, offline: true, message: 'No connection' };
   }
 };

@@ -32,6 +32,34 @@ type OCRHybridResult = {
   nationality?: string;
 };
 
+const AUTH_UI_LOG = '[AuthFlow]';
+
+const maskValue = (value: string) => {
+  const clean = (value || '').trim();
+  if (!clean) return '';
+  if (clean.length <= 4) return '*'.repeat(clean.length);
+  return `${'*'.repeat(clean.length - 4)}${clean.slice(-4)}`;
+};
+
+const resolveAuthToken = (response: any) =>
+  String(
+    response?.token ||
+    response?.access_token ||
+    response?.auth_token ||
+    response?.session_id ||
+    ''
+  ).trim();
+
+const isSuccessLikeMessage = (message: string) => {
+  const normalized = (message || '').trim().toLowerCase();
+  return normalized.includes('login successful') || normalized === 'success' || normalized === 'ok';
+};
+
+const getAuthFailureMessage = (response: any, fallback = 'Invalid credentials') => {
+  const raw = String(response?.message || '').trim();
+  return !raw || isSuccessLikeMessage(raw) ? fallback : raw;
+};
+
 export default function LoginScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const mode = route?.params?.mode || 'citizen';
@@ -54,6 +82,7 @@ export default function LoginScreen({ navigation, route }: any) {
     const checkConnection = async () => {
       setConnectionState('checking');
       const ok = await healthCheck();
+      console.info(`${AUTH_UI_LOG} backend:health`, { ok });
       if (active) {
         setConnectionState(ok ? 'online' : 'offline');
       }
@@ -67,6 +96,11 @@ export default function LoginScreen({ navigation, route }: any) {
   }, []);
 
   const handleOCRResult = (fields: any) => {
+    console.info(`${AUTH_UI_LOG} ocr:result-received`, {
+      mode: isTourist ? 'tourist' : 'citizen',
+      keys: fields ? Object.keys(fields) : [],
+    });
+
     if (isTourist) {
       const passport = String(fields?.passportNo || fields?.passport_no || fields?.passport || '').trim();
       const name = String(fields?.name || fields?.full_name || '').trim();
@@ -75,20 +109,30 @@ export default function LoginScreen({ navigation, route }: any) {
       if (passport) setPassportNo(passport);
       if (name) setFullName(name);
       if (nation) setNationality(nation);
+      console.info(`${AUTH_UI_LOG} ocr:tourist-prefill`, {
+        passport: maskValue(passport),
+        hasName: Boolean(name),
+        hasNationality: Boolean(nation),
+      });
       return;
     }
 
     const extractedCitizenship = String(fields?.citizenshipNo || fields?.citizenship_no || fields?.citizenship || '').trim();
     if (extractedCitizenship) setCitizenshipNo(extractedCitizenship);
+    console.info(`${AUTH_UI_LOG} ocr:citizen-prefill`, {
+      citizenship: maskValue(extractedCitizenship),
+    });
   };
 
   const handleLoginWithPayload = async (nidValue: string, citizenshipValue: string) => {
     console.info('[Auth] Login to Portal requested');
 
     const response = await authAPI.loginCitizen(nidValue.trim(), citizenshipValue.trim());
-    if (response.success && response.citizen && response.token) {
+    const token = resolveAuthToken(response);
+
+    if (response.success && response.citizen && token) {
       console.info('[Auth] user connected to db');
-      await login(response.citizen, response.token);
+      await login(response.citizen, token);
       Toast.show({
         type: 'success',
         text1: 'Login successful',
@@ -97,18 +141,38 @@ export default function LoginScreen({ navigation, route }: any) {
       return true;
     }
 
+    console.warn(`${AUTH_UI_LOG} citizen:login-incomplete-success`, {
+      success: Boolean(response?.success),
+      hasCitizen: Boolean(response?.citizen),
+      hasToken: Boolean(token),
+      rawMessage: response?.message || '',
+    });
+
+    const failureMessage = getAuthFailureMessage(response);
+
     Toast.show({
       type: 'error',
       text1: 'Unable to log in',
-      text2: response.message || 'Invalid credentials',
+      text2: failureMessage,
     });
+
+    console.warn(`${AUTH_UI_LOG} citizen:login-failed`, {
+      message: failureMessage,
+      rawMessage: response?.message || '',
+    });
+
     return false;
   };
 
   const handleCitizenLogin = async () => {
     const citizenship = citizenshipNo.trim();
+    console.info(`${AUTH_UI_LOG} citizen:login-attempt`, {
+      hasCitizenship: Boolean(citizenship),
+      citizenship: maskValue(citizenship),
+    });
 
     if (!citizenship) {
+      console.warn(`${AUTH_UI_LOG} citizen:missing-citizenship`);
       setShowScanPrompt(true);
       return;
     }
@@ -116,10 +180,19 @@ export default function LoginScreen({ navigation, route }: any) {
     setLoading(true);
     try {
       const response = await authAPI.loginCitizen(citizenship, citizenship);
+      const token = resolveAuthToken(response);
+      console.info(`${AUTH_UI_LOG} citizen:login-response`, {
+        success: Boolean(response?.success),
+        hasCitizen: Boolean(response?.citizen),
+        hasToken: Boolean(token),
+        message: response?.message || '',
+      });
 
-      if (response.success && response.citizen && response.token) {
-        console.info('[Auth] user connected to db');
-        await login(response.citizen, response.token);
+      if (response.success && response.citizen && token) {
+        console.info(`${AUTH_UI_LOG} citizen:login-success`, {
+          citizenId: response?.citizen?.id || response?.citizen?.nid || 'unknown',
+        });
+        await login(response.citizen, token);
         Toast.show({
           type: 'success',
           text1: 'Login successful',
@@ -128,12 +201,33 @@ export default function LoginScreen({ navigation, route }: any) {
         return;
       }
 
+      if (response?.success && response?.citizen && !token) {
+        console.warn(`${AUTH_UI_LOG} citizen:missing-token-on-success`, {
+          message: response?.message || '',
+        });
+        Toast.show({
+          type: 'error',
+          text1: 'Login response incomplete',
+          text2: 'Server did not return a session token. Please check backend auth response.',
+        });
+        return;
+      }
+
+      const failureMessage = getAuthFailureMessage(response);
+
       Toast.show({
         type: 'error',
         text1: 'Unable to log in',
-        text2: response.message || 'Invalid credentials',
+        text2: failureMessage,
+      });
+      console.warn(`${AUTH_UI_LOG} citizen:login-failed`, {
+        message: failureMessage,
+        rawMessage: response?.message || '',
       });
     } catch (error: any) {
+      console.error(`${AUTH_UI_LOG} citizen:login-error`, {
+        message: error?.message || 'Unknown error',
+      });
       Toast.show({
         type: 'error',
         text1: 'Unable to log in',
@@ -146,7 +240,16 @@ export default function LoginScreen({ navigation, route }: any) {
 
   const handleTouristLogin = async () => {
     const passport = passportNo.trim().toUpperCase();
+    console.info(`${AUTH_UI_LOG} tourist:login-attempt`, {
+      passport: maskValue(passport),
+      hasName: Boolean(fullName.trim()),
+      hasNationality: Boolean(nationality.trim()),
+    });
+
     if (!passport || passport.length < 6) {
+      console.warn(`${AUTH_UI_LOG} tourist:invalid-passport`, {
+        length: passport.length,
+      });
       Toast.show({
         type: 'error',
         text1: 'Invalid Passport',
@@ -163,6 +266,12 @@ export default function LoginScreen({ navigation, route }: any) {
         nationality: nationality.trim(),
         device_info: Platform.OS,
       });
+      console.info(`${AUTH_UI_LOG} tourist:login-response`, {
+        success: Boolean(res?.success),
+        hasTourist: Boolean(res?.tourist),
+        hasSessionId: Boolean(res?.session_id),
+        message: res?.message || '',
+      });
 
       const touristPayload = {
         passport_no: passport,
@@ -171,6 +280,7 @@ export default function LoginScreen({ navigation, route }: any) {
       };
 
       if (res.success) {
+        console.info(`${AUTH_UI_LOG} tourist:login-success`);
         await loginAsTourist(res.tourist || touristPayload, res.session_id || `tourist-${Date.now()}`);
         Toast.show({
           type: 'success',
@@ -178,6 +288,9 @@ export default function LoginScreen({ navigation, route }: any) {
           text2: `Welcome to Pokhara, ${fullName.trim() || passport}!`,
         });
       } else {
+        console.warn(`${AUTH_UI_LOG} tourist:login-fallback-demo`, {
+          reason: res?.message || 'Backend rejected login',
+        });
         await loginAsTourist(touristPayload, `tourist-demo-${Date.now()}`);
         Toast.show({
           type: 'info',
@@ -185,7 +298,10 @@ export default function LoginScreen({ navigation, route }: any) {
           text2: res.message || 'Continuing with guest access',
         });
       }
-    } catch {
+    } catch (error: any) {
+      console.error(`${AUTH_UI_LOG} tourist:login-error`, {
+        message: error?.message || 'Unknown error',
+      });
       await loginAsTourist(
         {
           passport_no: passport,
@@ -218,7 +334,10 @@ export default function LoginScreen({ navigation, route }: any) {
             activeOpacity={0.9}
             onPress={() => {
               setConnectionState('checking');
-              healthCheck().then((ok) => setConnectionState(ok ? 'online' : 'offline'));
+              healthCheck().then((ok) => {
+                console.info(`${AUTH_UI_LOG} backend:manual-health`, { ok });
+                setConnectionState(ok ? 'online' : 'offline');
+              });
             }}
           >
             <MaterialIcons
@@ -411,6 +530,7 @@ export default function LoginScreen({ navigation, route }: any) {
               <TouchableOpacity
                 style={styles.promptScanBtn}
                 onPress={() => {
+                  console.info(`${AUTH_UI_LOG} citizen:scan-prompt-confirmed`);
                   setShowScanPrompt(false);
                   setShowOCR(true);
                 }}

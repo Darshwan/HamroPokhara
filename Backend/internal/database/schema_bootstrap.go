@@ -9,6 +9,25 @@ import (
 // This is intentionally idempotent so older volumes can boot without a manual migration reset.
 func (db *DB) ensureCoreAuthSchema(ctx context.Context) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS citizen_profiles (
+			nid              VARCHAR(30) PRIMARY KEY,
+			citizenship_no   VARCHAR(30) NOT NULL,
+			full_name        VARCHAR(100) NOT NULL,
+			full_name_ne     VARCHAR(100),
+			dob              DATE,
+			gender           VARCHAR(10),
+			father_name      VARCHAR(100),
+			mother_name      VARCHAR(100),
+			ward_code        VARCHAR(20) NOT NULL,
+			ward_number      SMALLINT,
+			district         VARCHAR(50),
+			province         VARCHAR(50),
+			phone            VARCHAR(20),
+			is_active        BOOLEAN DEFAULT true,
+			created_at       TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_citizen_ward ON citizen_profiles(ward_code)`,
+		`CREATE INDEX IF NOT EXISTS idx_citizen_active ON citizen_profiles(is_active)`,
 		`CREATE TABLE IF NOT EXISTS citizen_sessions (
 			id              BIGSERIAL    PRIMARY KEY,
 			session_id      VARCHAR(80)  UNIQUE NOT NULL,

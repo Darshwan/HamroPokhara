@@ -5,9 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -15,7 +15,34 @@ import (
 	"pratibimba/internal/database"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 )
+
+func authTraceID(c *fiber.Ctx) string {
+	if v := strings.TrimSpace(c.Get("X-Request-ID")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(c.Get("X-Correlation-ID")); v != "" {
+		return v
+	}
+	return fmt.Sprintf("auth-%d", time.Now().UnixNano())
+}
+
+func maskAuthValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	if len(v) <= 4 {
+		return "****"
+	}
+	return v[:2] + strings.Repeat("*", len(v)-4) + v[len(v)-2:]
+}
+
+func logAuth(traceID, stage, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	log.Printf("[Auth][%s][%s] %s", traceID, stage, msg)
+}
 
 // ── Citizen Auth ──────────────────────────────────────────────
 
@@ -23,6 +50,9 @@ import (
 // Citizen logs in with NID + one of: citizenship, driving license, NID card
 func CitizenLogin(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		traceID := authTraceID(c)
+		logAuth(traceID, "request", "Citizen login request received from ip=%s", c.IP())
+
 		var req struct {
 			IDType string `json:"id_type"`
 			// Options: "NID" | "CITIZENSHIP" | "DRIVING_LICENSE"
@@ -38,6 +68,7 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 			DeviceInfo       string `json:"device_info"`
 		}
 		if err := c.BodyParser(&req); err != nil {
+			logAuth(traceID, "parse", "BodyParser failed: %v", err)
 			return c.Status(400).JSON(fiber.Map{
 				"success": false,
 				"message": "Invalid request format",
@@ -88,15 +119,18 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 		if req.IDType == "" {
 			req.IDType = "NID"
 		}
+		logAuth(traceID, "normalize", "Normalized login idType=%s primary=%s secondary=%s", req.IDType, maskAuthValue(req.PrimaryValue), maskAuthValue(req.SecondaryValue))
 
 		// Validate primary value
 		if req.PrimaryValue == "" {
+			logAuth(traceID, "validate", "Rejected: primary ID is empty")
 			return c.Status(400).JSON(fiber.Map{
 				"success": false,
 				"message": "ID number is required",
 			})
 		}
 		if len(req.PrimaryValue) < 5 {
+			logAuth(traceID, "validate", "Rejected: primary ID too short (%d)", len(req.PrimaryValue))
 			return c.Status(400).JSON(fiber.Map{
 				"success": false,
 				"message": "Invalid ID number format",
@@ -145,34 +179,75 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 			&profile.District, &profile.Province, &profile.Phone, &profile.Gender,
 		)
 
-		// ── Not in database → DEMO MODE fallback ──────────────
-		// For hackathon: if citizen not found, create a demo session
-		// In production: return 401 immediately
-		demoMode := false
+		// ── Not in database → auto-register citizen ────────────
+		autoRegistered := false
 		if err != nil {
-			if os.Getenv("DEMO_MODE") == "true" || os.Getenv("ENV") == "development" {
-				demoMode = true
-				log.Printf("[Auth] Citizen not found, using demo mode for NID: %s", req.PrimaryValue)
-				// Create demo profile
+			if errors.Is(err, pgx.ErrNoRows) {
+				autoRegistered = true
+				logAuth(traceID, "lookup", "Citizen not found. Auto-registering nid=%s", maskAuthValue(req.PrimaryValue))
+
+				citizenshipNo := strings.TrimSpace(req.SecondaryValue)
+				if citizenshipNo == "" {
+					citizenshipNo = req.PrimaryValue
+				}
+
 				profile.NID = req.PrimaryValue
-				profile.FullName = "Demo Citizen"
-				profile.FullNameNE = "डेमो नागरिक"
-				profile.CitizenshipNo = req.SecondaryValue
+				profile.FullName = "Citizen " + req.PrimaryValue
+				profile.FullNameNE = "नयाँ नागरिक"
+				profile.CitizenshipNo = citizenshipNo
 				profile.WardCode = "NPL-04-33-09"
 				profile.WardNumber = 9
 				profile.District = "Kaski"
 				profile.Province = "Gandaki"
+				profile.Gender = ""
+
+				_, insertErr := db.Pool.Exec(ctx, `
+					INSERT INTO citizen_profiles
+						(nid, citizenship_no, full_name, full_name_ne, ward_code, ward_number, district, province, is_active, created_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW())
+					ON CONFLICT (nid) DO UPDATE SET
+						citizenship_no = COALESCE(EXCLUDED.citizenship_no, citizen_profiles.citizenship_no),
+						full_name      = COALESCE(EXCLUDED.full_name, citizen_profiles.full_name),
+						full_name_ne   = COALESCE(EXCLUDED.full_name_ne, citizen_profiles.full_name_ne),
+						ward_code      = COALESCE(EXCLUDED.ward_code, citizen_profiles.ward_code),
+						ward_number    = COALESCE(EXCLUDED.ward_number, citizen_profiles.ward_number),
+						district       = COALESCE(EXCLUDED.district, citizen_profiles.district),
+						province       = COALESCE(EXCLUDED.province, citizen_profiles.province),
+						is_active      = true
+				`,
+					profile.NID,
+					profile.CitizenshipNo,
+					profile.FullName,
+					profile.FullNameNE,
+					profile.WardCode,
+					profile.WardNumber,
+					profile.District,
+					profile.Province,
+				)
+				if insertErr != nil {
+					logAuth(traceID, "lookup", "Auto-register failed for nid=%s: %v", maskAuthValue(req.PrimaryValue), insertErr)
+					return c.Status(500).JSON(fiber.Map{
+						"success": false,
+						"message": "Unable to log in right now. Please try again.",
+					})
+				}
+
+				logAuth(traceID, "lookup", "Auto-register success nid=%s ward=%s", maskAuthValue(profile.NID), profile.WardCode)
 			} else {
-				return c.Status(401).JSON(fiber.Map{
+				logAuth(traceID, "lookup", "Citizen lookup DB error for %s via %s: %v", maskAuthValue(req.PrimaryValue), req.IDType, err)
+				return c.Status(500).JSON(fiber.Map{
 					"success": false,
-					"message": "Citizen not found. Please register at your ward office.",
+					"message": "Unable to log in right now. Please try again.",
 				})
 			}
+		} else {
+			logAuth(traceID, "lookup", "Citizen profile found nid=%s ward=%s", maskAuthValue(profile.NID), profile.WardCode)
 		}
 
 		// ── Generate session token ─────────────────────────────
 		sessionID, err := generateSecureToken(32)
 		if err != nil {
+			logAuth(traceID, "session", "Token generation failed: %v", err)
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Session error"})
 		}
 
@@ -186,17 +261,19 @@ func CitizenLogin(db *database.DB) fiber.Handler {
             ON CONFLICT (session_id) DO NOTHING
         `, sessionID, profile.NID, req.IDType, req.DeviceInfo, c.IP(), expiresAt)
 		if err != nil {
-			log.Printf("[Auth] Session save error: %v", err)
+			logAuth(traceID, "session", "Session save error for nid=%s: %v", maskAuthValue(profile.NID), err)
 			// Non-fatal for demo — continue
+		} else {
+			logAuth(traceID, "session", "Session saved session_id=%s... expires_at=%s", sessionID[:8], expiresAt.Format(time.RFC3339))
 		}
 
-		log.Printf("[Auth] Citizen login: %s via %s", profile.NID, req.IDType)
+		logAuth(traceID, "success", "Citizen login completed nid=%s via=%s auto_registered=%v", maskAuthValue(profile.NID), req.IDType, autoRegistered)
 
 		return c.Status(200).JSON(fiber.Map{
-			"success":      true,
-			"demo_mode":    demoMode,
-			"session_id":   sessionID,
-			"session_type": "CITIZEN",
+			"success":         true,
+			"auto_registered": autoRegistered,
+			"session_id":      sessionID,
+			"session_type":    "CITIZEN",
 			"citizen": fiber.Map{
 				"nid":            profile.NID,
 				"name":           profile.FullName,
@@ -210,12 +287,7 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 				"gender":         profile.Gender,
 			},
 			"expires_at": expiresAt,
-			"message": func() string {
-				if demoMode {
-					return "Demo login successful"
-				}
-				return "Login successful"
-			}(),
+			"message":    "Login successful",
 		})
 	}
 }
@@ -226,6 +298,9 @@ func CitizenLogin(db *database.DB) fiber.Handler {
 // Tourist logs in via passport number (+ OCR verification)
 func TouristLogin(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		traceID := authTraceID(c)
+		logAuth(traceID, "request", "Tourist login request received from ip=%s", c.IP())
+
 		var req struct {
 			PassportNo  string `json:"passport_no"`
 			FullName    string `json:"full_name"`
@@ -236,16 +311,19 @@ func TouristLogin(db *database.DB) fiber.Handler {
 			// Raw OCR output from passport scan (optional)
 		}
 		if err := c.BodyParser(&req); err != nil {
+			logAuth(traceID, "parse", "BodyParser failed: %v", err)
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
 		}
 
 		req.PassportNo = strings.ToUpper(strings.TrimSpace(req.PassportNo))
 		if req.PassportNo == "" {
+			logAuth(traceID, "validate", "Rejected: passport number empty")
 			return c.Status(400).JSON(fiber.Map{
 				"success": false, "message": "Passport number required",
 			})
 		}
 		if len(req.PassportNo) < 6 {
+			logAuth(traceID, "validate", "Rejected: passport number too short")
 			return c.Status(400).JSON(fiber.Map{
 				"success": false, "message": "Invalid passport number",
 			})
@@ -263,7 +341,9 @@ func TouristLogin(db *database.DB) fiber.Handler {
                 ocr_raw     = EXCLUDED.ocr_raw
         `, req.PassportNo, req.FullName, req.Nationality, req.OCRData)
 		if err != nil {
-			log.Printf("[Auth] Tourist upsert error: %v", err)
+			logAuth(traceID, "upsert", "Tourist upsert error: %v", err)
+		} else {
+			logAuth(traceID, "upsert", "Tourist profile upserted passport=%s", maskAuthValue(req.PassportNo))
 		}
 
 		// Generate session
@@ -276,10 +356,12 @@ func TouristLogin(db *database.DB) fiber.Handler {
             VALUES ($1, $2, 'TOURIST', 'PASSPORT', true, $3, $4, $5)
         `, sessionID, req.PassportNo, req.DeviceInfo, c.IP(), expiresAt)
 		if err != nil {
-			log.Printf("[Auth] Tourist session error: %v", err)
+			logAuth(traceID, "session", "Tourist session save error: %v", err)
+		} else {
+			logAuth(traceID, "session", "Tourist session saved session_id=%s...", sessionID[:8])
 		}
 
-		log.Printf("[Auth] Tourist login: %s (%s)", req.PassportNo, req.Nationality)
+		logAuth(traceID, "success", "Tourist login completed passport=%s nationality=%s", maskAuthValue(req.PassportNo), req.Nationality)
 
 		return c.Status(200).JSON(fiber.Map{
 			"success":      true,
@@ -301,14 +383,20 @@ func TouristLogin(db *database.DB) fiber.Handler {
 // POST /auth/guest
 func GuestSession(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		traceID := authTraceID(c)
 		sessionID, _ := generateSecureToken(16)
 		expiresAt := time.Now().Add(6 * time.Hour)
 
-		_, _ = db.Pool.Exec(context.Background(), `
+		_, err := db.Pool.Exec(context.Background(), `
             INSERT INTO citizen_sessions
                 (session_id, citizen_nid, session_type, id_type, verified, ip_address, expires_at)
             VALUES ($1, 'GUEST', 'GUEST', 'NONE', false, $2, $3)
         `, sessionID, c.IP(), expiresAt)
+		if err != nil {
+			logAuth(traceID, "session", "Guest session save error: %v", err)
+		} else {
+			logAuth(traceID, "success", "Guest session created session_id=%s... ip=%s", sessionID[:8], c.IP())
+		}
 
 		return c.Status(200).JSON(fiber.Map{
 			"success":      true,
@@ -325,6 +413,9 @@ func GuestSession(db *database.DB) fiber.Handler {
 // Process a scanned document image and return extracted fields
 func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		traceID := authTraceID(c)
+		logAuth(traceID, "request", "Auth OCR validation request received from ip=%s", c.IP())
+
 		var req struct {
 			ImageBase64   string `json:"image_base64"`   // optional client photo for UI preview
 			ExtractedText string `json:"extracted_text"` // required client OCR output
@@ -332,11 +423,13 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 			// NID | CITIZENSHIP | DRIVING_LICENSE | PASSPORT
 		}
 		if err := c.BodyParser(&req); err != nil {
+			logAuth(traceID, "parse", "BodyParser failed: %v", err)
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
 		}
 
 		ocrText := strings.TrimSpace(req.ExtractedText)
 		if ocrText == "" {
+			logAuth(traceID, "validate", "Rejected: extracted_text missing")
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "extracted_text is required; OCR now runs on the client"})
 		}
 
@@ -350,14 +443,18 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 		fields := extractDocumentFields(ocrText, docType)
 
 		processingMs := int(time.Since(start).Milliseconds())
-		log.Printf("[Auth OCR] %s validated in %dms, extracted chars=%d", docType, processingMs, len(ocrText))
+		logAuth(traceID, "extract", "Document parsed type=%s chars=%d processing_ms=%d", docType, len(ocrText), processingMs)
 
 		// Log OCR attempt
 		fieldsJSON, _ := json.Marshal(fields)
-		_, _ = db.Pool.Exec(context.Background(), `
+		if _, err := db.Pool.Exec(context.Background(), `
             INSERT INTO ocr_audit (document_type, extracted_fields, processing_ms, ip_address)
             VALUES ($1, $2, $3, $4)
-        `, docType, string(fieldsJSON), processingMs, c.IP())
+        `, docType, string(fieldsJSON), processingMs, c.IP()); err != nil {
+			logAuth(traceID, "audit", "OCR audit insert failed: %v", err)
+		} else {
+			logAuth(traceID, "audit", "OCR audit inserted for type=%s", docType)
+		}
 
 		return c.Status(200).JSON(fiber.Map{
 			"success":       true,

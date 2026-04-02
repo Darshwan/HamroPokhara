@@ -47,6 +47,15 @@ interface Props {
   mode?: ScanMode;
 }
 
+const AUTH_OCR_LOG = '[AuthOCR]';
+
+const maskValue = (value?: string) => {
+  const clean = (value || '').trim();
+  if (!clean) return '';
+  if (clean.length <= 4) return '*'.repeat(clean.length);
+  return `${'*'.repeat(clean.length - 4)}${clean.slice(-4)}`;
+};
+
 const normalizeOCRResult = (raw: any): OCRResult => ({
   name: raw?.name || raw?.full_name || raw?.citizen_name || '',
   nid: raw?.nid || raw?.national_id || '',
@@ -83,6 +92,7 @@ export default function OCRHybridScreen({
 
   const requestCameraPermission = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    console.info(`${AUTH_OCR_LOG} camera:permission`, { status });
     setHasPermission(status === 'granted');
     return status === 'granted';
   };
@@ -102,6 +112,11 @@ export default function OCRHybridScreen({
   };
 
   const captureAndProcess = async () => {
+    console.info(`${AUTH_OCR_LOG} scan:start`, {
+      mode: isTourist ? 'tourist' : 'citizen',
+      docType,
+    });
+
     const granted = await requestCameraPermission();
     if (!granted) return;
 
@@ -112,7 +127,10 @@ export default function OCRHybridScreen({
       cameraType: ImagePicker.CameraType.back,
     });
 
-    if (result.canceled || !result.assets?.length) return;
+    if (result.canceled || !result.assets?.length) {
+      console.warn(`${AUTH_OCR_LOG} scan:canceled`);
+      return;
+    }
 
     const asset = result.assets[0];
     setPhotoUri(asset.uri);
@@ -121,8 +139,15 @@ export default function OCRHybridScreen({
     try {
       const response = await authAPI.scanIdentityDocument(docType, asset.uri, fields.nid || fields.citizenshipNo || fields.passportNo || undefined);
       const extracted = response?.extracted || response?.fields || response?.result || response?.data || {};
+      console.info(`${AUTH_OCR_LOG} scan:response`, {
+        success: Boolean(response?.success !== false),
+        keys: Object.keys(extracted || {}),
+      });
       applyOCRFields(extracted, asset.uri);
-    } catch {
+    } catch (error: any) {
+      console.error(`${AUTH_OCR_LOG} scan:error`, {
+        message: error?.message || 'Unknown scan error',
+      });
       applyOCRFields({}, asset.uri);
     } finally {
       setLoading(false);
@@ -130,6 +155,14 @@ export default function OCRHybridScreen({
   };
 
   const handleUseDetails = () => {
+    console.info(`${AUTH_OCR_LOG} scan:confirm`, {
+      mode: isTourist ? 'tourist' : 'citizen',
+      passport: maskValue(fields.passportNo),
+      citizenship: maskValue(fields.citizenshipNo),
+      hasName: Boolean(fields.name?.trim()),
+      hasNationality: Boolean(fields.nationality?.trim()),
+      hasDob: Boolean(fields.dob?.trim()),
+    });
     onResult({
       name: fields.name.trim(),
       nid: fields.nid?.trim(),
@@ -142,6 +175,7 @@ export default function OCRHybridScreen({
   };
 
   const handleRetake = async () => {
+    console.info(`${AUTH_OCR_LOG} scan:retake`);
     setPhotoUri('');
     setFields({ name: '', nid: '', citizenshipNo: '', passportNo: '', nationality: '', dob: '' });
     await captureAndProcess();
