@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -166,6 +168,13 @@ func PreviewDocumentPDF(db *database.DB) fiber.Handler {
 			})
 		}
 
+		savedPath, saveErr := saveGeneratedPDFToFolder("preview", pdfResult.Filename, pdfResult.Bytes)
+		if saveErr != nil {
+			log.Printf("[PDF] Warning: could not save preview PDF to disk: %v", saveErr)
+		} else {
+			log.Printf("[PDF] Preview PDF saved at %s", savedPath)
+		}
+
 		// Response options
 		if req.ReturnBase64 {
 			// Return as base64 JSON (for web preview)
@@ -176,6 +185,7 @@ func PreviewDocumentPDF(db *database.DB) fiber.Handler {
 				"pdf_base64": b64,
 				"filename":   pdfResult.Filename,
 				"dtid":       previewDTID,
+				"saved_path": savedPath,
 				"page_count": pdfResult.PageCount,
 			})
 		}
@@ -183,6 +193,9 @@ func PreviewDocumentPDF(db *database.DB) fiber.Handler {
 		// Return as downloadable PDF file
 		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, pdfResult.Filename))
 		c.Set("Content-Type", "application/pdf")
+		if savedPath != "" {
+			c.Set("X-PDF-Saved-Path", savedPath)
+		}
 		return c.Send(pdfResult.Bytes)
 	}
 }
@@ -298,10 +311,20 @@ func DownloadDocumentPDF(db *database.DB) fiber.Handler {
 			})
 		}
 
+		savedPath, saveErr := saveGeneratedPDFToFolder("citizen_download", pdfResult.Filename, pdfResult.Bytes)
+		if saveErr != nil {
+			log.Printf("[PDF] Warning: could not save citizen download PDF to disk: %v", saveErr)
+		} else {
+			log.Printf("[PDF] Citizen download PDF saved at %s", savedPath)
+		}
+
 		// Stream PDF directly
 		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, pdfResult.Filename))
 		c.Set("Content-Type", "application/pdf")
 		c.Set("Cache-Control", "public, max-age=3600")
+		if savedPath != "" {
+			c.Set("X-PDF-Saved-Path", savedPath)
+		}
 		return c.Send(pdfResult.Bytes)
 	}
 }
@@ -428,11 +451,42 @@ func OfficerRequestPreviewPDF(db *database.DB) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Failed to generate preview PDF"})
 		}
 
+		savedPath, saveErr := saveGeneratedPDFToFolder("officer_preview", pdfResult.Filename, pdfResult.Bytes)
+		if saveErr != nil {
+			log.Printf("[PDF] Warning: could not save officer preview PDF to disk: %v", saveErr)
+		} else {
+			log.Printf("[PDF] Officer preview PDF saved at %s", savedPath)
+		}
+
 		c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, pdfResult.Filename))
 		c.Set("Content-Type", "application/pdf")
 		c.Set("Cache-Control", "no-store")
+		if savedPath != "" {
+			c.Set("X-PDF-Saved-Path", savedPath)
+		}
 		return c.Send(pdfResult.Bytes)
 	}
+}
+
+func generatedPDFDir() string {
+	if dir := strings.TrimSpace(os.Getenv("GENERATED_PDF_DIR")); dir != "" {
+		return dir
+	}
+	return "./generated_pdfs"
+}
+
+func saveGeneratedPDFToFolder(category, filename string, content []byte) (string, error) {
+	dir := filepath.Join(generatedPDFDir(), category)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	fullPath := filepath.Join(dir, filename)
+	if err := os.WriteFile(fullPath, content, 0644); err != nil {
+		return "", err
+	}
+
+	return fullPath, nil
 }
 
 // convertGenderToNepali converts English gender to Nepali

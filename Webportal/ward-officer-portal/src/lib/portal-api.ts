@@ -241,6 +241,35 @@ export async function createOfficerNotice(token: string, payload: NoticeCreatePa
   return { news_id: data.news_id };
 }
 
+export async function fetchOfficerRequestPdfUrl(token: string, requestId: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/officer/request-pdf/${encodeURIComponent(requestId)}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Preview request failed (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+export async function fetchDocumentPdfUrlByDtid(dtid: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/document/pdf/${encodeURIComponent(dtid)}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Document PDF request failed (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export function toDocumentLabel(type: string): string {
   const map: Record<string, string> = {
     SIFARIS: "Sifaris",

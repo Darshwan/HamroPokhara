@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow, Typography } from '../constants/theme';
 import { useStore } from '../store/useStore';
-import { statsAPI, weatherAPI } from '../api/client';
+import { citizenAPI, statsAPI, weatherAPI } from '../api/client';
 import AppHeader from '../components/AppHeader';
 
 type WeatherCardData = {
@@ -135,6 +135,16 @@ const NEWS_ITEMS = [
   },
 ];
 
+type NoticeFeedItem = {
+  notice_id?: string;
+  title?: string;
+  title_ne?: string;
+  category?: string;
+  content?: string;
+  is_urgent?: boolean;
+  published_at?: string;
+};
+
 type SearchResult = {
   id: string;
   title: string;
@@ -181,6 +191,7 @@ export default function HomeScreen({ navigation }: any) {
   const { citizen, tourist, isTourist, logout } = useStore();
   const [stats, setStats] = useState<any>(null);
   const [weather, setWeather] = useState<WeatherCardData>(DEFAULT_WEATHER);
+  const [notices, setNotices] = useState<NoticeFeedItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -217,15 +228,28 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  const loadNotices = async () => {
+    try {
+      const wardCode = citizen?.ward_code || 'NPL-04-33-09';
+      const res = await citizenAPI.getNotices(wardCode);
+      if (res.success) {
+        setNotices(Array.isArray(res.notices) ? res.notices : []);
+      }
+    } catch {
+      setNotices([]);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadStats(), loadWeather()]);
+    await Promise.all([loadStats(), loadWeather(), loadNotices()]);
     setRefreshing(false);
   };
 
   useEffect(() => {
     loadStats();
     loadWeather();
+    loadNotices();
   }, []);
 
   useEffect(() => {
@@ -279,26 +303,25 @@ export default function HomeScreen({ navigation }: any) {
       keywords: [item.label, 'menu', 'citizen', 'ward'],
     }));
 
-    const noticeItems = NOTICES.map((item) => ({
-      id: `notice-${item}`,
-      title: `${item} Notice`,
-      subtitle: 'Municipal notice category',
-      icon: 'campaign',
-      screen: 'Request',
-      keywords: [item, 'notice', 'suchana', 'announcement'],
+    const noticeSource = notices.length
+      ? notices
+      : [
+          { notice_id: 'fallback-urgent', title: 'Water Supply Interruption', title_ne: 'पानी आपूर्ति बन्द', category: 'URGENT', content: 'Water supply interrupted 8AM-4PM on 2082/06/15.', is_urgent: true },
+          { notice_id: 'fallback-infra', title: 'Road Widening Project', title_ne: 'सडक चौडाइ', category: 'INFRASTRUCTURE', content: 'Prithvi Chowk road widening begins next week.', is_urgent: false },
+          { notice_id: 'fallback-health', title: 'Free Health Camp', title_ne: 'स्वास्थ्य शिविर', category: 'HEALTH', content: 'Free checkup at Ward 9 hall on 2082/06/20.', is_urgent: false },
+        ];
+
+    const noticeItems = noticeSource.map((item) => ({
+      id: item.notice_id || item.title || 'notice',
+      title: item.title || item.title_ne || 'Notice',
+      subtitle: item.content || 'Municipal notice',
+      icon: item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'newspaper',
+      screen: 'CitizenPortal',
+      keywords: [item.title || '', item.title_ne || '', item.category || '', item.content || '', 'notice', 'news', 'ward'],
     }));
 
-    const newsItems = NEWS_ITEMS.slice(0, 3).map((item) => ({
-      id: `news-${item.title}`,
-      title: item.title,
-      subtitle: 'Pokhara Samachar',
-      icon: 'newspaper',
-      screen: 'Track',
-      keywords: ['news', 'samachar', 'pokhara', item.title],
-    }));
-
-    return [...serviceItems, ...menuSearchItems, ...noticeItems, ...newsItems];
-  }, [isTourist]);
+    return [...serviceItems, ...menuSearchItems, ...noticeItems];
+  }, [isTourist, notices]);
 
   const searchResults = useMemo(() => {
     if (!debouncedQuery) {

@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -80,6 +83,13 @@ func DownloadPDF(db *database.DB) fiber.Handler {
 			})
 		}
 
+		savedPath, saveErr := saveGeneratedPDFToFolder("registry_download", result.Filename, result.Bytes)
+		if saveErr != nil {
+			log.Printf("[PDF] Warning: could not save registry PDF for %s: %v", dtid, saveErr)
+		} else {
+			log.Printf("[PDF] Registry PDF saved at %s", savedPath)
+		}
+
 		log.Printf("📄 PDF generated: %s (%d bytes)", dtid, len(result.Bytes))
 
 		// ── Stream PDF to client ─────────────────────────────
@@ -88,9 +98,33 @@ func DownloadPDF(db *database.DB) fiber.Handler {
 			fmt.Sprintf(`attachment; filename="%s"`, result.Filename))
 		c.Set("Content-Length", fmt.Sprintf("%d", len(result.Bytes)))
 		c.Set("Cache-Control", "no-cache")
+		if savedPath != "" {
+			c.Set("X-PDF-Saved-Path", savedPath)
+		}
 
 		return c.Send(result.Bytes)
 	}
+}
+
+func generatedPDFDir() string {
+	if dir := strings.TrimSpace(os.Getenv("GENERATED_PDF_DIR")); dir != "" {
+		return dir
+	}
+	return "./generated_pdfs"
+}
+
+func saveGeneratedPDFToFolder(category, filename string, content []byte) (string, error) {
+	dir := filepath.Join(generatedPDFDir(), category)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	fullPath := filepath.Join(dir, filename)
+	if err := os.WriteFile(fullPath, content, 0644); err != nil {
+		return "", err
+	}
+
+	return fullPath, nil
 }
 
 // buildPDFRequest assembles a PDFRequest from DB data.

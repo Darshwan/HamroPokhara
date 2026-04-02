@@ -58,6 +58,23 @@ const NAGARIK_SEWAS = [
   { id: 'feedback', icon: 'star', label: 'Rate Officer', labelNE: 'अधिकारी मूल्यांकन' },
 ];
 
+const SERVICE_ACCENTS: Record<string, { bg: string; chip: string; icon: string; text: string }> = {
+  ai:        { bg: '#EEF2FF', chip: '#E0E7FF', icon: '#4F46E5', text: '#312E81' },
+  grievance: { bg: '#FFF1F2', chip: '#FFE4E6', icon: '#BE123C', text: '#9F1239' },
+  hearing:   { bg: '#EFF6FF', chip: '#DBEAFE', icon: '#2563EB', text: '#1D4ED8' },
+  tax:       { bg: '#F0FDF4', chip: '#DCFCE7', icon: '#15803D', text: '#166534' },
+  krishi:    { bg: '#F7FEE7', chip: '#ECFCCB', icon: '#65A30D', text: '#3F6212' },
+  bhatta:    { bg: '#F0FDFA', chip: '#CCFBF1', icon: '#0F766E', text: '#115E59' },
+  blood:     { bg: '#FEF2F2', chip: '#FEE2E2', icon: '#DC2626', text: '#991B1B' },
+  tourism:   { bg: '#ECFEFF', chip: '#CFFAFE', icon: '#0891B2', text: '#155E75' },
+  lost:      { bg: '#FFF7ED', chip: '#FFEDD5', icon: '#EA580C', text: '#C2410C' },
+  volunteer: { bg: '#FAF5FF', chip: '#E9D5FF', icon: '#7C3AED', text: '#6D28D9' },
+  digsig:    { bg: '#F8FAFC', chip: '#E2E8F0', icon: '#475569', text: '#334155' },
+  feedback:  { bg: '#FFFBEB', chip: '#FEF3C7', icon: '#D97706', text: '#B45309' },
+};
+
+const getAccent = (id: string) => SERVICE_ACCENTS[id] || { bg: '#F8FAFC', chip: '#E2E8F0', icon: Colors.primary, text: Colors.primary };
+
 // ── Main Component ────────────────────────────────────────────
 
 export default function SewaScreen({ navigation }: any) {
@@ -83,6 +100,25 @@ export default function SewaScreen({ navigation }: any) {
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [queueService, setQueueService]     = useState('SIFARIS');
   const [bookingQueue, setBookingQueue]     = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredSewas = NAGARIK_SEWAS.filter((item) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return `${item.label} ${item.labelNE}`.toLowerCase().includes(q);
+  });
+
+  const getService = (id: string) => NAGARIK_SEWAS.find((item) => item.id === id);
+
+  const featuredIds = ['ai', 'grievance', 'hearing', 'tax'];
+  const rowOneIds = ['krishi', 'bhatta', 'blood', 'tourism'];
+  const rowTwoIds = ['lost', 'volunteer', 'digsig', 'feedback'];
+
+  const featuredServices = featuredIds.map(getService).filter(Boolean) as typeof NAGARIK_SEWAS;
+  const rowOneServices = rowOneIds.map(getService).filter(Boolean) as typeof NAGARIK_SEWAS;
+  const rowTwoServices = rowTwoIds.map(getService).filter(Boolean) as typeof NAGARIK_SEWAS;
+
+  const isVisible = (id: string) => !searchQuery.trim() || `${getService(id)?.label || ''} ${getService(id)?.labelNE || ''}`.toLowerCase().includes(searchQuery.trim().toLowerCase());
 
   const handleOpenNagarikSewa = (id: string) => {
     if (id === 'ai') {
@@ -276,6 +312,42 @@ export default function SewaScreen({ navigation }: any) {
         showsVerticalScrollIndicator={false}
       >
 
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroBadge}>
+              <MaterialIcons name="apps" size={14} color={Colors.primary} />
+              <Text style={styles.heroBadgeText}>{language === 'ne' ? 'सरल पहुँच' : 'Simple access'}</Text>
+            </View>
+            <View style={styles.heroWardPill}>
+              <MaterialIcons name="location-on" size={12} color={Colors.onPrimaryFixedVariant} />
+              <Text style={styles.heroWardText}>Ward {wardCode.split('-')[3] || '9'}</Text>
+            </View>
+          </View>
+          <Text style={styles.heroTitle}>{language === 'ne' ? 'Core Services' : 'Core Services'}</Text>
+          <Text style={styles.heroSubtitle}>
+            {language === 'ne'
+              ? 'नागरिक सेवाहरू, सहायता, ट्र्याकिङ र रिपोर्टिङ एकै ठाउँमा।'
+              : 'Citizen services, help, tracking, and reporting in one place.'}
+          </Text>
+          <View style={styles.searchBar}>
+            <MaterialIcons name="search" size={18} color={Colors.outline} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={language === 'ne' ? 'सेवा खोज्नुहोस्...' : 'Search services...'}
+              placeholderTextColor={Colors.outline}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            {!!searchQuery && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <MaterialIcons name="close" size={18} color={Colors.outline} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* ── AI-OCR SIFARIS CARD (PRATIBIMBA Hero) ─────────────── */}
         <TouchableOpacity
           style={styles.pratibimbaCard}
@@ -306,23 +378,77 @@ export default function SewaScreen({ navigation }: any) {
             <Text style={styles.cardTitle}>{language === 'ne' ? '१२ नागरिक सेवाहरू' : '12 Nagarik Services'}</Text>
             <MaterialIcons name="apps" size={20} color={Colors.primary} />
           </View>
-          <View style={styles.nagarikGrid}>
-            {NAGARIK_SEWAS.map((item) => (
+          <View style={styles.featuredGrid}>
+            {featuredServices.filter((item) => isVisible(item.id)).map((item) => (
+              (() => {
+                const accent = getAccent(item.id);
+                return (
               <TouchableOpacity
                 key={item.id}
-                style={styles.nagarikTile}
+                style={[styles.featuredTile, { backgroundColor: accent.bg, borderColor: accent.chip }]}
                 onPress={() => handleOpenNagarikSewa(item.id)}
-                activeOpacity={0.85}
+                activeOpacity={0.9}
               >
-                <View style={styles.nagarikTileIcon}>
-                  <MaterialIcons name={item.icon as any} size={18} color={Colors.primary} />
+                <View style={styles.featuredIconRow}>
+                  <View style={[styles.featuredIconWrap, { backgroundColor: accent.chip }]}>
+                    <MaterialIcons name={item.icon as any} size={20} color={accent.icon} />
+                  </View>
+                  <MaterialIcons name="chevron-right" size={16} color={Colors.outline} />
                 </View>
-                <Text numberOfLines={2} style={styles.nagarikTileText}>
+                <Text numberOfLines={2} style={[styles.featuredTileText, { color: accent.text }]}>
                   {language === 'ne' ? item.labelNE : item.label}
                 </Text>
+                <Text style={styles.featuredTileSub}>
+                  {item.id === 'ai' && (language === 'ne' ? 'प्रश्न सोध्नुहोस्' : 'Ask questions')}
+                  {item.id === 'grievance' && (language === 'ne' ? 'समस्या रिपोर्ट' : 'Report issues')}
+                  {item.id === 'hearing' && (language === 'ne' ? 'सार्वजनिक भेटघाट' : 'Public sessions')}
+                  {item.id === 'tax' && (language === 'ne' ? 'कर र दस्तुर' : 'Taxes & fines')}
+                </Text>
               </TouchableOpacity>
+                );
+              })()
             ))}
           </View>
+
+          <Text style={styles.sectionSubhead}>{language === 'ne' ? 'छिटो सेवाहरू' : 'Quick Services'}</Text>
+          <View style={styles.compactRow}>
+            {rowOneServices.filter((item) => isVisible(item.id)).map((item) => (
+              (() => {
+                const accent = getAccent(item.id);
+                return (
+              <TouchableOpacity key={item.id} style={styles.compactTile} onPress={() => handleOpenNagarikSewa(item.id)} activeOpacity={0.85}>
+                <View style={[styles.compactTileIcon, { backgroundColor: accent.chip }]}>
+                  <MaterialIcons name={item.icon as any} size={18} color={accent.icon} />
+                </View>
+                <Text numberOfLines={2} style={[styles.compactTileText, { color: accent.text }]}>{language === 'ne' ? item.labelNE : item.label}</Text>
+              </TouchableOpacity>
+                );
+              })()
+            ))}
+          </View>
+
+          <View style={styles.compactRow}>
+            {rowTwoServices.filter((item) => isVisible(item.id)).map((item) => (
+              (() => {
+                const accent = getAccent(item.id);
+                return (
+              <TouchableOpacity key={item.id} style={styles.compactTile} onPress={() => handleOpenNagarikSewa(item.id)} activeOpacity={0.85}>
+                <View style={[styles.compactTileIcon, { backgroundColor: accent.chip }]}>
+                  <MaterialIcons name={item.icon as any} size={18} color={accent.icon} />
+                </View>
+                <Text numberOfLines={2} style={[styles.compactTileText, { color: accent.text }]}>{language === 'ne' ? item.labelNE : item.label}</Text>
+              </TouchableOpacity>
+                );
+              })()
+            ))}
+          </View>
+
+          {filteredSewas.length === 0 && (
+            <View style={styles.emptyState}>
+              <MaterialIcons name="search-off" size={24} color={Colors.outline} />
+              <Text style={styles.emptyText}>{language === 'ne' ? 'मिलेन' : 'No matching service found'}</Text>
+            </View>
+          )}
         </View>
 
         {/* ── LIVE STATUS TRACKER (Real Data from PRATIBIMBA) ─────── */}
@@ -701,8 +827,19 @@ const styles = StyleSheet.create({
   container:           { flex: 1, backgroundColor: Colors.background },
   scroll:              { padding: 16, gap: 14, paddingBottom: 40 },
 
+  heroCard:            { backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 16, borderWidth: 1, borderColor: Colors.outlineVariant, ...Shadow.sm },
+  heroTopRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10 },
+  heroBadge:           { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primaryFixed, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 6, flexShrink: 1 },
+  heroBadgeText:       { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  heroWardPill:        { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryFixed, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full },
+  heroWardText:        { fontSize: 11, fontWeight: '700', color: Colors.onPrimaryFixedVariant },
+  heroTitle:           { fontSize: 22, fontWeight: '900', color: Colors.primary, letterSpacing: -0.3 },
+  heroSubtitle:        { fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 4 },
+  searchBar:           { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: Colors.outlineVariant },
+  searchInput:         { flex: 1, fontSize: 14, color: Colors.onSurface },
+
   // PRATIBIMBA Card
-  pratibimbaCard:      { borderRadius: Radius.xxl, padding: 28, overflow: 'hidden', minHeight: 200, justifyContent: 'space-between', ...Shadow.lg },
+  pratibimbaCard:      { borderRadius: Radius.xxl, padding: 22, overflow: 'hidden', minHeight: 188, justifyContent: 'space-between', ...Shadow.lg },
   aiOCRBadge:          { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, alignSelf: 'flex-start', marginBottom: 12 },
   aiOCRBadgeText:      { color: '#fff', fontSize: 11, fontWeight: '700' },
   pratibimbaTitle:     { fontSize: 28, fontWeight: '900', color: '#fff', marginBottom: 8 },
@@ -711,14 +848,21 @@ const styles = StyleSheet.create({
   pratibimbaBtnText:   { color: Colors.primary, fontSize: 13, fontWeight: '700' },
 
   // Generic Card
-  card:                { backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 20, ...Shadow.sm },
-  cardHeader:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  card:                { backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 18, borderWidth: 1, borderColor: Colors.outlineVariant, ...Shadow.sm },
+  cardHeader:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   cardTitle:           { fontSize: 16, fontWeight: '700', color: Colors.primary },
-  nagarikGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  nagarikTile:         { width: '31.5%', backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1, borderColor: Colors.outlineVariant },
-  nagarikTileIcon:     { width: 32, height: 32, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  nagarikTileText:     { fontSize: 11, fontWeight: '700', color: Colors.primary, textAlign: 'center', lineHeight: 15 },
-  emptyState:          { alignItems: 'center', padding: 24, gap: 8 },
+  featuredGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 },
+  featuredTile:        { width: '48.5%', backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.xl, padding: 14, borderWidth: 1, borderColor: Colors.outlineVariant, minHeight: 118, justifyContent: 'space-between' },
+  featuredIconRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  featuredIconWrap:    { width: 38, height: 38, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center' },
+  featuredTileText:    { fontSize: 13, fontWeight: '800', color: Colors.primary, lineHeight: 18, marginTop: 10 },
+  featuredTileSub:     { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 6 },
+  sectionSubhead:      { fontSize: 12, color: Colors.onSurfaceVariant, fontWeight: '700', marginTop: 6, marginBottom: 10 },
+  compactRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 },
+  compactTile:         { width: '23.5%', backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1, borderColor: Colors.outlineVariant, minHeight: 92 },
+  compactTileIcon:     { width: 32, height: 32, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  compactTileText:     { fontSize: 11, fontWeight: '700', color: Colors.primary, textAlign: 'center', lineHeight: 15 },
+  emptyState:          { alignItems: 'center', padding: 18, gap: 8 },
   emptyText:           { fontSize: 13, color: Colors.onSurfaceVariant },
 
   // Status Steps

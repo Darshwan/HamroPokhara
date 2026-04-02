@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   approveRequest,
   createOfficerNotice,
+  fetchDocumentPdfUrlByDtid,
   fetchDashboardStats,
   fetchOfficerNotices,
+  fetchOfficerRequestPdfUrl,
   fetchQueue,
   loginOfficer,
   rejectRequest,
@@ -134,6 +136,14 @@ export default function Home() {
     image_url: "",
     expires_in_days: 0,
   });
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewReadyForRequest, setPreviewReadyForRequest] = useState<string | null>(null);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [recentPdfUrl, setRecentPdfUrl] = useState<string | null>(null);
+  const [recentPdfLoading, setRecentPdfLoading] = useState(false);
+  const [recentPdfDtid, setRecentPdfDtid] = useState<string | null>(null);
+  const [recentPdfFullscreen, setRecentPdfFullscreen] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -151,6 +161,31 @@ export default function Home() {
     const t = setTimeout(() => setToast(""), 2800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrl) {
+        URL.revokeObjectURL(previewPdfUrl);
+      }
+    };
+  }, [previewPdfUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (recentPdfUrl) {
+        URL.revokeObjectURL(recentPdfUrl);
+      }
+    };
+  }, [recentPdfUrl]);
+
+  useEffect(() => {
+    setPreviewPdfUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPreviewReadyForRequest(null);
+    setReviewConfirmed(false);
+  }, [selectedRequest?.request_id]);
 
   const visibleQueue = useMemo(() => {
     const byFilter = filter === "all" ? queue : queue.filter((item) => item.status === filter);
@@ -214,6 +249,10 @@ export default function Home() {
 
   async function handleApprove() {
     if (!selectedRequest || !token) return;
+    if (previewReadyForRequest !== selectedRequest.request_id || !reviewConfirmed) {
+      setToast(lang === "np" ? "निर्णय अघि PDF समीक्षा पुष्टि आवश्यक छ।" : "You must review and confirm the PDF before decision.");
+      return;
+    }
     setLoading(true);
     const approval = await approveRequest(token, selectedRequest.request_id);
     setLoading(false);
@@ -230,6 +269,10 @@ export default function Home() {
 
   async function handleReject() {
     if (!selectedRequest || !token || !rejectReason.trim()) return;
+    if (previewReadyForRequest !== selectedRequest.request_id || !reviewConfirmed) {
+      setToast(lang === "np" ? "निर्णय अघि PDF समीक्षा पुष्टि आवश्यक छ।" : "You must review and confirm the PDF before decision.");
+      return;
+    }
     setLoading(true);
     await rejectRequest(token, selectedRequest.request_id, rejectReason.trim());
     setLoading(false);
@@ -296,6 +339,42 @@ export default function Home() {
     }
   }
 
+  async function handleLoadRequestPreview() {
+    if (!token || !selectedRequest) return;
+    setPreviewLoading(true);
+    try {
+      const nextUrl = await fetchOfficerRequestPdfUrl(token, selectedRequest.request_id);
+      setPreviewPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return nextUrl;
+      });
+      setPreviewReadyForRequest(selectedRequest.request_id);
+      setReviewConfirmed(false);
+      setToast(lang === "np" ? "PDF प्रिभ्यु तयार भयो। समीक्षा गर्नुहोस्।" : "PDF preview ready. Please review before decision.");
+    } catch {
+      setToast(lang === "np" ? "PDF प्रिभ्यु लोड गर्न सकिएन।" : "Failed to load request PDF preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function handleViewRecentPdf(dtid: string) {
+    setRecentPdfLoading(true);
+    try {
+      const nextUrl = await fetchDocumentPdfUrlByDtid(dtid);
+      setRecentPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return nextUrl;
+      });
+      setRecentPdfDtid(dtid);
+      setToast(lang === "np" ? "कागजात PDF लोड भयो।" : "Document PDF loaded.");
+    } catch {
+      setToast(lang === "np" ? "कागजात PDF लोड गर्न सकिएन।" : "Failed to load document PDF.");
+    } finally {
+      setRecentPdfLoading(false);
+    }
+  }
+
   function logout() {
     localStorage.removeItem("pratibimba_token");
     localStorage.removeItem("pratibimba_officer");
@@ -303,6 +382,18 @@ export default function Home() {
     setToken("");
     setQueue([]);
     setNotices([]);
+    setPreviewPdfUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPreviewReadyForRequest(null);
+    setReviewConfirmed(false);
+    setRecentPdfUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setRecentPdfDtid(null);
+    setRecentPdfFullscreen(false);
     setSelectedRequest(null);
     setStats(emptyStats);
     setVerifyResult(null);
@@ -464,7 +555,7 @@ export default function Home() {
                   {stats.recent_entries.map((entry) => (
                     <div
                       key={entry.dtid}
-                      className="grid grid-cols-[1fr_auto_auto] gap-3 rounded-xl border border-[var(--line)] p-3 text-sm"
+                      className="grid grid-cols-[1fr_auto_auto_auto] gap-3 rounded-xl border border-[var(--line)] p-3 text-sm"
                     >
                       <div>
                         <p className="font-semibold">{entry.dtid}</p>
@@ -474,9 +565,57 @@ export default function Home() {
                         {toDocumentLabel(entry.document_type)}
                       </span>
                       <span className="text-xs text-[var(--ink-500)]">{relativeTime(entry.created_at)}</span>
+                      <button
+                        onClick={() => void handleViewRecentPdf(entry.dtid)}
+                        disabled={recentPdfLoading}
+                        className="rounded-lg border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink-700)] transition hover:bg-[var(--mint-50)] disabled:opacity-60"
+                      >
+                        {recentPdfLoading && recentPdfDtid === entry.dtid ? "Loading..." : "View"}
+                      </button>
                     </div>
                   ))}
                 </div>
+
+                {recentPdfLoading && (
+                  <div className="mt-5 rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] p-4">
+                    <div className="mb-3 h-4 w-44 animate-pulse rounded bg-[var(--mint-100)]" />
+                    <div className="h-[520px] w-full animate-pulse rounded-lg border border-[var(--line)] bg-[var(--mint-50)]" />
+                  </div>
+                )}
+
+                {recentPdfUrl && recentPdfDtid && (
+                  <div className="mt-5 rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[var(--ink-900)]">Document PDF: {recentPdfDtid}</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setRecentPdfFullscreen(true)}
+                          className="rounded-lg border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink-700)]"
+                        >
+                          Fullscreen
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRecentPdfUrl((prev) => {
+                              if (prev) URL.revokeObjectURL(prev);
+                              return null;
+                            });
+                            setRecentPdfDtid(null);
+                            setRecentPdfFullscreen(false);
+                          }}
+                          className="rounded-lg border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink-700)]"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                    <iframe
+                      src={recentPdfUrl}
+                      title={`Recent document PDF ${recentPdfDtid}`}
+                      className="h-[520px] w-full rounded-lg border border-[var(--line)] bg-white"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -549,6 +688,45 @@ export default function Home() {
                     <InfoRow label="Ward" value={selectedRequest.ward_code} />
                     <InfoRow label="Status" value={selectedRequest.status} />
 
+                    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-[var(--ink-900)]">Backend PDF Preview</p>
+                        <button
+                          onClick={() => void handleLoadRequestPreview()}
+                          disabled={previewLoading}
+                          className="rounded-lg border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink-700)] disabled:opacity-60"
+                        >
+                          {previewLoading ? "Loading PDF..." : "Load PDF Preview"}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--ink-500)]">
+                        Review this generated document before approving or rejecting the request.
+                      </p>
+
+                      {previewPdfUrl && previewReadyForRequest === selectedRequest.request_id ? (
+                        <>
+                          <iframe
+                            src={previewPdfUrl}
+                            title={`PDF preview ${selectedRequest.request_id}`}
+                            className="mt-3 h-[420px] w-full rounded-lg border border-[var(--line)] bg-white"
+                          />
+                          <label className="mt-3 flex items-start gap-2 text-sm text-[var(--ink-700)]">
+                            <input
+                              type="checkbox"
+                              checked={reviewConfirmed}
+                              onChange={(event) => setReviewConfirmed(event.target.checked)}
+                              className="mt-0.5 h-4 w-4 rounded border-[var(--line)]"
+                            />
+                            <span>I have reviewed this document</span>
+                          </label>
+                        </>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-[var(--line)] bg-white p-4 text-xs text-[var(--ink-500)]">
+                          PDF preview not loaded yet.
+                        </div>
+                      )}
+                    </div>
+
                     <textarea
                       value={rejectReason}
                       onChange={(event) => setRejectReason(event.target.value)}
@@ -559,19 +737,26 @@ export default function Home() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => void handleApprove()}
-                        disabled={loading}
+                        disabled={loading || previewReadyForRequest !== selectedRequest.request_id || !reviewConfirmed}
                         className="flex-1 rounded-xl bg-[var(--mint-800)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                       >
                         Approve
                       </button>
                       <button
                         onClick={() => void handleReject()}
-                        disabled={loading || !rejectReason.trim()}
+                        disabled={loading || previewReadyForRequest !== selectedRequest.request_id || !reviewConfirmed || !rejectReason.trim()}
                         className="flex-1 rounded-xl border border-[var(--coral)] px-4 py-2 text-sm font-semibold text-[var(--coral)] disabled:opacity-60"
                       >
                         Reject
                       </button>
                     </div>
+                    {(previewReadyForRequest !== selectedRequest.request_id || !reviewConfirmed) && (
+                      <p className="text-xs text-[var(--amber)]">
+                        {previewReadyForRequest !== selectedRequest.request_id
+                          ? "Load and review the backend PDF preview before taking action."
+                          : "Please check \"I have reviewed this document\" before taking action."}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -773,6 +958,27 @@ export default function Home() {
       {toast && (
         <div className="fixed bottom-5 right-5 rounded-xl bg-[var(--ink-900)] px-4 py-2 text-sm font-medium text-white">
           {toast}
+        </div>
+      )}
+
+      {recentPdfFullscreen && recentPdfUrl && recentPdfDtid && (
+        <div className="fixed inset-0 z-50 bg-black/60 p-4">
+          <div className="flex h-full w-full flex-col rounded-xl border border-[var(--line)] bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold text-[var(--ink-900)]">Document PDF: {recentPdfDtid}</p>
+              <button
+                onClick={() => setRecentPdfFullscreen(false)}
+                className="rounded-lg border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink-700)]"
+              >
+                Exit Fullscreen
+              </button>
+            </div>
+            <iframe
+              src={recentPdfUrl}
+              title={`Recent document PDF fullscreen ${recentPdfDtid}`}
+              className="h-full w-full rounded-lg border border-[var(--line)] bg-white"
+            />
+          </div>
         </div>
       )}
     </div>
