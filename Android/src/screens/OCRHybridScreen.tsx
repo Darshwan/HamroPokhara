@@ -10,6 +10,7 @@ import {
   Image,
   TextInput,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -84,6 +85,7 @@ export default function OCRHybridScreen({
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [photoUri, setPhotoUri] = useState('');
+  const [rawExtracted, setRawExtracted] = useState<Record<string, any>>({});
   const [fields, setFields] = useState<OCRHybridFields>({
     name: '',
     nid: '',
@@ -154,6 +156,7 @@ export default function OCRHybridScreen({
         keys: Object.keys(extracted || {}),
         stored: Boolean(response?.stored || response?.saved || response?.scan_id),
       });
+      setRawExtracted(extracted || {});
       applyOCRFields(extracted, asset.uri);
     } catch (error: any) {
       console.error(`${AUTH_OCR_LOG} scan:error`, {
@@ -165,7 +168,26 @@ export default function OCRHybridScreen({
     }
   };
 
-  const handleUseDetails = () => {
+  const handleUseDetails = async () => {
+    const corrected = {
+      name: fields.name?.trim() || '',
+      nid: fields.nid?.trim() || '',
+      citizenship_no: fields.citizenshipNo?.trim() || '',
+      passport_no: fields.passportNo?.trim() || '',
+      nationality: fields.nationality?.trim() || '',
+      dob: fields.dob?.trim() || '',
+    };
+
+    if (!isTourist && !corrected.citizenship_no) {
+      Alert.alert('Required Field', 'Please confirm your citizenship number before continuing.');
+      return;
+    }
+
+    if (isTourist && !corrected.passport_no) {
+      Alert.alert('Required Field', 'Please confirm your passport number before continuing.');
+      return;
+    }
+
     console.info(`${AUTH_OCR_LOG} scan:confirm`, {
       mode: isTourist ? 'tourist' : 'citizen',
       passport: maskValue(fields.passportNo),
@@ -174,13 +196,36 @@ export default function OCRHybridScreen({
       hasNationality: Boolean(fields.nationality?.trim()),
       hasDob: Boolean(fields.dob?.trim()),
     });
+
+    try {
+      const wasCorrect =
+        (rawExtracted?.citizenship_no || rawExtracted?.citizenshipNo || '') === corrected.citizenship_no &&
+        (rawExtracted?.passport_no || rawExtracted?.passportNo || '') === corrected.passport_no;
+
+      const saveRes = await authAPI.validateOcrResult({
+        original_fields: rawExtracted || {},
+        corrected_fields: corrected,
+        document_type: docType,
+        was_correct: Boolean(wasCorrect),
+      });
+
+      console.info(`${AUTH_OCR_LOG} scan:validated`, {
+        success: Boolean(saveRes?.success !== false),
+        stored: Boolean(saveRes?.stored || saveRes?.saved || saveRes?.scan_id),
+      });
+    } catch (error: any) {
+      console.warn(`${AUTH_OCR_LOG} scan:validate-failed`, {
+        message: error?.message || 'Failed to persist OCR confirmation',
+      });
+    }
+
     onResult({
-      name: fields.name.trim(),
-      nid: fields.nid?.trim(),
-      citizenshipNo: fields.citizenshipNo?.trim(),
-      passportNo: fields.passportNo?.trim(),
-      nationality: fields.nationality?.trim(),
-      dob: fields.dob.trim(),
+      name: corrected.name,
+      nid: corrected.nid,
+      citizenshipNo: corrected.citizenship_no,
+      passportNo: corrected.passport_no,
+      nationality: corrected.nationality,
+      dob: corrected.dob,
       imageUri: photoUri,
     });
   };

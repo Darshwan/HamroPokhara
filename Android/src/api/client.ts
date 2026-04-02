@@ -192,6 +192,13 @@ export const authAPI = {
     language?: 'ne' | 'en';
   }) => api.post('/auth/ocr', payload),
 
+  validateOcrResult: (payload: {
+    original_fields: Record<string, any>;
+    corrected_fields: Record<string, any>;
+    document_type: 'citizenship' | 'nid' | 'license' | 'passport';
+    was_correct: boolean;
+  }) => api.post('/auth/ocr/validate', payload),
+
   startGuest: () => api.post('/auth/guest/start', {}),
 };
 

@@ -80,6 +80,38 @@ func TestProcessDocumentOCR_AllDocumentTypes(t *testing.T) {
 				t.Fatalf("expected fields object, got %+v", out["fields"])
 			}
 
+			norm, ok := out["normalized_fields"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected normalized_fields object, got %+v", out["normalized_fields"])
+			}
+
+			if _, ok := out["stored"].(bool); !ok {
+				t.Fatalf("expected stored boolean in response")
+			}
+
+			if _, ok := out["autofill_ready"].(bool); !ok {
+				t.Fatalf("expected autofill_ready boolean in response")
+			}
+
+			switch tt.documentType {
+			case "CITIZENSHIP":
+				if v, _ := norm["citizenship_no"].(string); v == "" {
+					t.Fatalf("expected normalized citizenship_no for CITIZENSHIP")
+				}
+			case "NID":
+				if v, _ := norm["nid"].(string); v == "" {
+					t.Fatalf("expected normalized nid for NID")
+				}
+			case "PASSPORT":
+				if v, _ := norm["passport_no"].(string); v == "" {
+					t.Fatalf("expected normalized passport_no for PASSPORT")
+				}
+			case "DRIVING_LICENSE":
+				if v, _ := norm["license_no"].(string); v == "" {
+					t.Fatalf("expected normalized license_no for DRIVING_LICENSE")
+				}
+			}
+
 			if requiresVerification, _ := out["requires_verification"].(bool); !requiresVerification {
 				t.Fatalf("expected requires_verification=true")
 			}

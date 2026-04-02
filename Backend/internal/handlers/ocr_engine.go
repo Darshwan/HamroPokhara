@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -79,6 +80,9 @@ type PassportFields struct {
 // then falls back to regex parsing, and returns autofill-ready structured fields.
 func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		traceID := authTraceID(c)
+		start := time.Now()
+
 		var req struct {
 			ImageBase64   string `json:"image_base64"`
 			ExtractedText string `json:"extracted_text"`
@@ -96,27 +100,44 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 
 		imageB64 := strings.TrimSpace(req.ImageBase64)
 		ocrHint := strings.TrimSpace(req.ExtractedText)
+		log.Printf("[OCR][%s][request] doc_type=%s language=%s image_bytes=%d extracted_text_len=%d", traceID, req.DocumentType, strings.TrimSpace(req.Language), len(imageB64), len(ocrHint))
+		if ocrHint != "" {
+			log.Printf("[OCR][%s][request] extracted_text_preview=%q", traceID, truncateForLog(ocrHint, 240))
+		}
+
 		if imageB64 == "" && ocrHint == "" {
+			log.Printf("[OCR][%s][validate] rejected: both image_base64 and extracted_text missing", traceID)
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "image_base64 or extracted_text is required"})
 		}
 
-		start := time.Now()
 		ctx := context.Background()
 
 		var rawText string
 		var googleOK bool
+		googleAttempted := false
 		if imageB64 != "" {
 			googleKey := strings.TrimSpace(os.Getenv("GOOGLE_VISION_API_KEY"))
 			if googleKey != "" {
+				googleAttempted = true
+				log.Printf("[OCR][%s][google] attempting vision OCR", traceID)
 				text, err := callGoogleVision(ctx, googleKey, imageB64)
 				if err == nil && len(strings.TrimSpace(text)) > 20 {
 					rawText = text
 					googleOK = true
+					log.Printf("[OCR][%s][google] success raw_text_len=%d", traceID, len(rawText))
+				} else if err != nil {
+					log.Printf("[OCR][%s][google] failed: %v", traceID, err)
+				} else {
+					log.Printf("[OCR][%s][google] returned low text length=%d", traceID, len(strings.TrimSpace(text)))
 				}
 			}
 		}
+		if !googleAttempted {
+			log.Printf("[OCR][%s][google] skipped (missing image or GOOGLE_VISION_API_KEY)", traceID)
+		}
 		if !googleOK && ocrHint != "" {
 			rawText = ocrHint
+			log.Printf("[OCR][%s][fallback] using extracted_text from client", traceID)
 		}
 
 		var structuredFields interface{}
@@ -124,30 +145,56 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 
 		anthropicKey := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
 		if imageB64 != "" && anthropicKey != "" {
+			log.Printf("[OCR][%s][claude] attempting vision extraction", traceID)
 			fields, err := extractWithClaude(ctx, anthropicKey, imageB64, req.DocumentType, rawText)
 			if err == nil && fields != nil {
 				structuredFields = fields
 				extractionSource = "claude_vision"
+				log.Printf("[OCR][%s][claude] success", traceID)
+			} else if err != nil {
+				log.Printf("[OCR][%s][claude] failed: %v", traceID, err)
 			}
+		} else {
+			log.Printf("[OCR][%s][claude] skipped (missing image or ANTHROPIC_API_KEY)", traceID)
 		}
 
 		if structuredFields == nil && rawText != "" {
 			structuredFields = parseRawText(rawText, req.DocumentType)
 			extractionSource = "ocr_parsed"
+			log.Printf("[OCR][%s][parser] fallback parser used raw_text_len=%d", traceID, len(rawText))
 		}
 
 		if structuredFields == nil {
 			structuredFields = emptyFields(req.DocumentType)
+			log.Printf("[OCR][%s][result] empty fields generated (manual required)", traceID)
 		}
+
+		normalized := buildNormalizedAutofill(req.DocumentType, structuredFields)
+		stored := normalized["full_name"] != "" && (normalized["nid"] != "" || normalized["citizenship_no"] != "" || normalized["passport_no"] != "" || normalized["license_no"] != "")
 
 		processingMs := int(time.Since(start).Milliseconds())
 		fieldsJSON, _ := json.Marshal(structuredFields)
+		log.Printf("[OCR][%s][read] source=%s structured_fields=%s", traceID, extractionSource, truncateForLog(string(fieldsJSON), 800))
+		normJSON, _ := json.Marshal(normalized)
+		log.Printf("[OCR][%s][send] normalized_fields=%s stored=%v autofill_ready=%v processing_ms=%d", traceID, truncateForLog(string(normJSON), 600), stored, stored, processingMs)
 		auditOCR(db, req.DocumentType, string(fieldsJSON), processingMs, c.IP())
 
 		return c.Status(200).JSON(fiber.Map{
 			"success":               true,
 			"document_type":         req.DocumentType,
 			"fields":                structuredFields,
+			"normalized_fields":     normalized,
+			"stored":                stored,
+			"autofill_ready":        stored,
+			"nid":                   normalized["nid"],
+			"citizenship_no":        normalized["citizenship_no"],
+			"full_name":             normalized["full_name"],
+			"dob":                   normalized["dob"],
+			"gender":                normalized["gender"],
+			"father_name":           normalized["father_name"],
+			"mother_name":           normalized["mother_name"],
+			"district":              normalized["district"],
+			"ward":                  normalized["ward"],
 			"source":                extractionSource,
 			"processing_ms":         processingMs,
 			"requires_verification": true,
@@ -157,6 +204,18 @@ func ProcessDocumentOCR(db *database.DB) fiber.Handler {
 			},
 		})
 	}
+}
+
+func truncateForLog(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "..."
 }
 
 func callGoogleVision(ctx context.Context, apiKey, imageBase64 string) (string, error) {
@@ -379,10 +438,34 @@ func parseRawText(text, docType string) interface{} {
 	case "NID":
 		return parseNIDText(text, lines)
 	case "DRIVING_LICENSE":
-		return &DrivingLicenseFields{Confidence: map[string]int{}}
+		return parseDrivingLicenseText(text)
 	default:
 		return map[string]string{"raw_text": text}
 	}
+}
+
+func parseDrivingLicenseText(text string) *DrivingLicenseFields {
+	f := &DrivingLicenseFields{Confidence: map[string]int{}}
+
+	licensePattern := regexp.MustCompile(`(?i)(?:license\s*no\s*[:\-]?\s*|\b)([A-Z0-9\-]{8,20})`)
+	if match := licensePattern.FindStringSubmatch(text); len(match) > 1 {
+		f.LicenseNo = strings.TrimSpace(match[1])
+		f.Confidence["license_no"] = 85
+	}
+
+	namePattern := regexp.MustCompile(`(?i)name\s*[:\-]\s*([A-Za-z\s]{4,60})`)
+	if match := namePattern.FindStringSubmatch(text); len(match) > 1 {
+		f.FullName = strings.TrimSpace(match[1])
+		f.Confidence["full_name"] = 75
+	}
+
+	dobPattern := regexp.MustCompile(`\d{4}[/\-]\d{1,2}[/\-]\d{1,2}`)
+	if match := dobPattern.FindString(text); match != "" {
+		f.DOB = match
+		f.Confidence["dob"] = 78
+	}
+
+	return f
 }
 
 func parseCitizenshipText(text string, lines []string) *CitizenshipFields {
@@ -638,4 +721,86 @@ func auditOCR(db *database.DB, documentType, extractedFields string, processingM
 		INSERT INTO ocr_audit (document_type, extracted_fields, processing_ms, ip_address)
 		VALUES ($1, $2, $3, $4)
 	`, documentType, extractedFields, processingMs, ipAddress)
+}
+
+func buildNormalizedAutofill(docType string, fields interface{}) map[string]string {
+	result := map[string]string{
+		"nid":            "",
+		"citizenship_no": "",
+		"full_name":      "",
+		"dob":            "",
+		"gender":         "",
+		"father_name":    "",
+		"mother_name":    "",
+		"district":       "",
+		"ward":           "",
+		"passport_no":    "",
+		"license_no":     "",
+	}
+
+	m := toStringMap(fields)
+	if len(m) == 0 {
+		return result
+	}
+
+	get := func(key string) string {
+		v, _ := m[key].(string)
+		return strings.TrimSpace(v)
+	}
+
+	switch docType {
+	case "CITIZENSHIP":
+		result["citizenship_no"] = get("citizenship_no")
+		result["full_name"] = ocrFirstNonEmpty(get("full_name_ne"), get("full_name_en"))
+		result["dob"] = ocrFirstNonEmpty(get("dob_ne"), get("dob"))
+		result["gender"] = get("gender")
+		result["father_name"] = get("father_name_ne")
+		result["mother_name"] = get("mother_name_ne")
+		result["district"] = get("district_ne")
+		result["ward"] = get("ward_no")
+	case "NID":
+		result["nid"] = get("nid_number")
+		result["full_name"] = get("full_name")
+		result["dob"] = get("dob")
+		result["gender"] = get("gender")
+	case "PASSPORT":
+		result["passport_no"] = get("passport_no")
+		result["full_name"] = strings.TrimSpace(ocrFirstNonEmpty(get("surname"), "") + " " + ocrFirstNonEmpty(get("given_names"), ""))
+		result["dob"] = get("dob")
+		result["gender"] = get("sex")
+		result["district"] = get("place_of_birth")
+	case "DRIVING_LICENSE":
+		result["license_no"] = get("license_no")
+		result["full_name"] = get("full_name")
+		result["dob"] = get("dob")
+	}
+
+	return result
+}
+
+func toStringMap(v interface{}) map[string]interface{} {
+	if v == nil {
+		return map[string]interface{}{}
+	}
+	if m, ok := v.(map[string]interface{}); ok {
+		return m
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]interface{}{}
+	}
+	return m
+}
+
+func ocrFirstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
