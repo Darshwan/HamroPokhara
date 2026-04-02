@@ -115,7 +115,7 @@ const NOTICE_STORY_IMAGES = [
 ];
 
 // Digital Newspaper Section hero image
-const DIGITAL_NEWSPAPER_IMAGE = 'https://images.unsplash.com/photo-1495551821494-d1dab916e3f2?auto=format&fit=crop&w=1200&q=80';
+const DIGITAL_NEWSPAPER_IMAGE = 'https://lh6.googleusercontent.com/proxy/6KbuXWC6qiw4CYPnfqJMpf1OVwaJuPrI7tdwfZJ4L2YzSVOTnW4Ci_7aaB4uT9A1TcsLNTOENwWSrcf8KDnsnRn6_LW__YOzuQNnFb-KEWIhZA-Kq7hefgEg07DAbd_qpVP3QQEl8Vp0x248kTQcJqp72277';
 
 // Add 2-5 Pokhara weather background image links here.
 const POKHARA_WEATHER_BG_IMAGES = [
@@ -494,7 +494,7 @@ export default function HomeScreen({ navigation }: any) {
       title: isNepali ? (item.title_ne || item.title || 'सूचना') : (item.title || item.title_ne || 'Notice'),
       subtitle: item.content || t('Municipal notice', 'नगरपालिका सूचना'),
       icon: item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'newspaper',
-      screen: 'CitizenPortal',
+      screen: 'Main',
       keywords: [item.title || '', item.title_ne || '', item.category || '', item.content || '', 'notice', 'news', 'ward'],
     }));
 
@@ -671,7 +671,7 @@ export default function HomeScreen({ navigation }: any) {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t('Top Stories', 'मुख्य सूचना')} <Text style={styles.sectionSub}>{t('/ Quick updates', '/ ताजा अपडेट')}</Text></Text>
-              <TouchableOpacity onPress={() => navigation.navigate('CitizenPortal')}>
+              <TouchableOpacity onPress={() => navigation.navigate('Main')}>
                 <Text style={styles.viewAll}>{t('Open', 'खोल्नुहोस्')}</Text>
               </TouchableOpacity>
             </View>
@@ -842,14 +842,14 @@ export default function HomeScreen({ navigation }: any) {
           <>
             {/* Digital Newspaper Section */}
             <View style={styles.fullWidthRow}>
-              <TouchableOpacity activeOpacity={0.92} style={styles.newspaperHeroCard} onPress={() => navigation.navigate('CitizenPortal')}>
-                <ImageBackground 
-                  source={{ uri: DIGITAL_NEWSPAPER_IMAGE }} 
+              <TouchableOpacity activeOpacity={0.92} style={styles.newspaperHeroCard} onPress={() => navigation.navigate('Main')}>
+                <ImageBackground
+                  source={{ uri: DIGITAL_NEWSPAPER_IMAGE }}
                   style={styles.newspaperHeroImage}
                   imageStyle={styles.newspaperHeroImageClip}
                 >
-                  <LinearGradient 
-                    colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.65)']} 
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.65)']}
                     style={StyleSheet.absoluteFill}
                   />
                   <View style={styles.newspaperHeroContent}>
@@ -871,7 +871,7 @@ export default function HomeScreen({ navigation }: any) {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t('Suchana', 'सूचना')} <Text style={styles.sectionSub}>{t('/ Notices & News', '/ सूचना र समाचार')}</Text></Text>
-              <TouchableOpacity onPress={() => navigation.navigate('CitizenPortal')}>
+              <TouchableOpacity onPress={() => navigation.navigate('Main')}>
                 <Text style={styles.viewAll}>{t('View All', 'सबै हेर्नुहोस्')}</Text>
               </TouchableOpacity>
             </View>
@@ -892,7 +892,7 @@ export default function HomeScreen({ navigation }: any) {
 
               return (
                 <>
-                  <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                  <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard} onPress={() => navigation.navigate('Main')}>
                     <LinearGradient
                       colors={[Colors.primary, Colors.primaryContainer]}
                       style={StyleSheet.absoluteFill}
@@ -911,7 +911,7 @@ export default function HomeScreen({ navigation }: any) {
 
                   <View style={styles.newsGrid}>
                     {secondaryItems.map((item) => (
-                      <TouchableOpacity key={item.notice_id} activeOpacity={0.9} style={styles.newsItemCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                      <TouchableOpacity key={item.notice_id} activeOpacity={0.9} style={styles.newsItemCard} onPress={() => navigation.navigate('Main')}>
                         <View style={[styles.newsThumb, { alignItems: 'center', justifyContent: 'center', backgroundColor: item.is_urgent ? '#FEE2E2' : Colors.primaryFixed }]}>
                           <MaterialIcons
                             name={(item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'article') as any}
@@ -1045,7 +1045,7 @@ export default function HomeScreen({ navigation }: any) {
             </ScrollView>
 
             <View style={styles.storyModalActions}>
-              <TouchableOpacity style={styles.storyModalPrimary} onPress={() => { setSelectedStory(null); navigation.navigate('CitizenPortal'); }}>
+              <TouchableOpacity style={styles.storyModalPrimary} onPress={() => { setSelectedStory(null); navigation.navigate('Main'); }}>
                 <MaterialIcons name="article" size={16} color="#fff" />
                 <Text style={styles.storyModalPrimaryText}>{t('Open notice board', 'सूचना बोर्ड खोल्नुहोस्')}</Text>
               </TouchableOpacity>

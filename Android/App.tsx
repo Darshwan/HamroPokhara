@@ -16,7 +16,6 @@ import HomeScreen      from './src/screens/HomeScreen';
 import TrackScreen     from './src/screens/TrackScreen';
 import VerifyScreen    from './src/screens/VerifyScreen';
 import ProfileScreen   from './src/screens/ProfileScreen';
-import CitizenPortalScreen from './src/screens/CitizenPortalScreen';
 import GovernmentAssistantScreen from './src/screens/GovernmentAssistantScreen';
 import FeaturesScreen from './src/screens/FeaturesScreen';
 import SifarisRequestScreen from './src/screens/SifarisRequestScreen';
@@ -414,7 +413,6 @@ export default function App() {
                 <Stack.Screen name="Verify" component={VerifyScreen} />
                 <Stack.Screen name="Assistant" component={GovernmentAssistantScreen} />
                 <Stack.Screen name="Features" component={FeaturesScreen} />
-                <Stack.Screen name="CitizenPortal" component={CitizenPortalScreen} />
                 <Stack.Screen name="WardMap" component={WardMapScreen} />
                 <Stack.Screen name="WardDetail" component={WardDetailScreen} />
               </>
