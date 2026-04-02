@@ -181,7 +181,10 @@ export default function App() {
               </>
             ) : (
               // ── Main App ──────────────────────────────────────
-              <Stack.Screen name="Main" component={MainTabs} />
+              <>
+                <Stack.Screen name="Main" component={MainTabs} />
+                <Stack.Screen name="CitizenPortal" component={CitizenPortalScreen} />
+              </>
             )}
           </Stack.Navigator>
         </NavigationContainer>

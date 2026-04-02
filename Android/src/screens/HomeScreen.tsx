@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, Modal, Keyboard,
+  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -100,38 +100,46 @@ const CITIZEN_MENU = [
 
 const NOTICES = ['Urgent', 'Infrastructure', 'Health', 'Culture', 'Tourism'];
 
-const NEWS_ITEMS = [
+const STORY_NEWS = [
   {
-    title: 'Pokhara Regional Airport initiates full night-landing capability operations.',
-    tag: 'Tourism & Dev',
-    time: 'LATEST',
+    title: 'Ward office opens a new online token desk for faster service pickup.',
+    tag: 'Citizen Service',
+    time: 'JUST NOW',
     image:
-      'https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=900&q=80',
-    summary: 'CAAN confirmed technical evaluations for IFR operations are complete and active.',
+      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80',
+    summary: 'A story-style card can surface the latest update without feeling heavy or formal.',
   },
   {
-    title: 'Lakeside Organic Market to host Weekend Harvest Festival.',
+    title: 'Pokhara set to receive cleaner bus stops and better route signage.',
+    tag: 'Transport',
     time: '2 HOURS AGO',
     image:
-      'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80',
+      'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
+    summary: 'This can become a short official update, a feature story, or a service notice.',
   },
   {
-    title: 'Gandaki Province allocates funds for New Cricket Stadium.',
+    title: 'Water quality testing is now displayed ward-by-ward for residents.',
+    tag: 'Health',
     time: '5 HOURS AGO',
     image:
-      'https://images.unsplash.com/photo-1593766788306-28561086694e?auto=format&fit=crop&w=600&q=80',
+      'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80',
+    summary: 'The modal can show a short explainer and a direct action button.',
   },
   {
-    title: 'Digital permit queue reduced in Ward 17 after system rollout.',
+    title: 'Digital permit queue reduced after the first mobile rollout.',
+    tag: 'E-Service',
     time: '8 HOURS AGO',
     image:
-      'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80',
+      'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
+    summary: 'A lighter, rounded box layout feels closer to modern consumer apps.',
   },
   {
-    title: 'Tourism board opens sunrise shuttle route around Phewa circuit.',
+    title: 'Community festival stories and official notices can live in the same feed.',
+    tag: 'Culture',
     time: '1 DAY AGO',
     image:
-      'https://images.unsplash.com/photo-1518391846015-55a9cc003b25?auto=format&fit=crop&w=600&q=80',
+      'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
+    summary: 'You can keep the feed demo-based while the rest of the app stays functional.',
   },
 ];
 
@@ -192,6 +200,7 @@ export default function HomeScreen({ navigation }: any) {
   const [stats, setStats] = useState<any>(null);
   const [weather, setWeather] = useState<WeatherCardData>(DEFAULT_WEATHER);
   const [notices, setNotices] = useState<NoticeFeedItem[]>([]);
+  const [selectedStory, setSelectedStory] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -485,24 +494,33 @@ export default function HomeScreen({ navigation }: any) {
 
         {!isTourist && (
           <>
-            {/* Notices horizontal scroll */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Suchana <Text style={styles.sectionSub}>/ Notices</Text></Text>
-              <TouchableOpacity><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
+              <Text style={styles.sectionTitle}>Top Stories <Text style={styles.sectionSub}>/ Quick updates</Text></Text>
+              <TouchableOpacity onPress={() => setSelectedStory(STORY_NEWS[0])}>
+                <Text style={styles.viewAll}>Open</Text>
+              </TouchableOpacity>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.noticesRow}>
-              {NOTICES.map((n, i) => (
-                <TouchableOpacity key={n} style={styles.noticeItem}>
-                  <View style={[styles.noticeCircle, i === 0 && styles.noticeCircleUrgent]}>
-                    <View style={styles.noticeInner}>
-                      <MaterialIcons
-                        name={i === 0 ? 'campaign' : i === 1 ? 'construction' : i === 2 ? 'local-hospital' : i === 3 ? 'celebration' : 'landscape'}
-                        size={24}
-                        color={i === 0 ? Colors.secondary : Colors.primary}
-                      />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storyRow}>
+              {STORY_NEWS.map((story, index) => (
+                <TouchableOpacity
+                  key={`${story.title}-${index}`}
+                  activeOpacity={0.9}
+                  style={[styles.storyCard, index === 0 && styles.storyCardFeatured]}
+                  onPress={() => setSelectedStory(story)}
+                >
+                  <ImageBackground source={{ uri: story.image }} style={styles.storyImage} imageStyle={styles.storyImageClip}>
+                    <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={StyleSheet.absoluteFill} />
+                    <View style={styles.storyTopRow}>
+                      <View style={styles.storyBadge}>
+                        <Text style={styles.storyBadgeText}>{story.tag}</Text>
+                      </View>
+                      <View style={styles.storyDot} />
                     </View>
-                  </View>
-                  <Text style={[styles.noticeLabel, i === 0 && styles.noticeLabelUrgent]}>{n}</Text>
+                    <View style={styles.storyBottom}>
+                      <Text numberOfLines={2} style={styles.storyTitle}>{story.title}</Text>
+                      <Text style={styles.storyMeta}>{story.time}</Text>
+                    </View>
+                  </ImageBackground>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -575,35 +593,65 @@ export default function HomeScreen({ navigation }: any) {
           </>
         )}
 
-        {/* Pokhara Samachar */}
+        {/* Notices / News */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{isTourist ? 'Travel Stories' : 'Pokhara Samachar'} <Text style={styles.sectionSub}>/ Top 5</Text></Text>
-          <TouchableOpacity><Text style={styles.viewAll}>{isTourist ? 'Visitor Guide' : 'Digital Edition'}</Text></TouchableOpacity>
+          <Text style={styles.sectionTitle}>{isTourist ? 'Travel Stories' : 'Suchana'} <Text style={styles.sectionSub}>/ Notices & News</Text></Text>
+          <TouchableOpacity onPress={() => navigation.navigate('CitizenPortal')}>
+            <Text style={styles.viewAll}>{isTourist ? 'Visitor Guide' : 'View All'}</Text>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard}>
-          <Image source={{ uri: NEWS_ITEMS[0].image }} style={styles.heroNewsImage} />
-          <View style={styles.heroNewsOverlay}>
-            <View style={styles.heroTagWrap}>
-              <Text style={styles.heroTag}>{NEWS_ITEMS[0].tag}</Text>
-              <Text style={styles.heroLatest}>{NEWS_ITEMS[0].time}</Text>
-            </View>
-            <Text style={styles.heroNewsTitle}>{NEWS_ITEMS[0].title}</Text>
-            <Text style={styles.heroNewsSummary}>{NEWS_ITEMS[0].summary}</Text>
-          </View>
-        </TouchableOpacity>
+        {(() => {
+          const fallbackNotices = [
+            { notice_id: 'fallback-urgent', title: 'Water Supply Interruption', title_ne: 'पानी आपूर्ति बन्द', category: 'URGENT', content: 'Water supply interrupted 8AM-4PM on 2082/06/15.', is_urgent: true },
+            { notice_id: 'fallback-infra', title: 'Road Widening Project', title_ne: 'सडक चौडाइ', category: 'INFRASTRUCTURE', content: 'Prithvi Chowk road widening begins next week.', is_urgent: false },
+            { notice_id: 'fallback-health', title: 'Free Health Camp', title_ne: 'स्वास्थ्य शिविर', category: 'HEALTH', content: 'Free checkup at Ward 9 hall on 2082/06/20.', is_urgent: false },
+            { notice_id: 'fallback-culture', title: 'Lakhe Festival', title_ne: 'लाखे जात्रा', category: 'CULTURE', content: 'Community festival this weekend around Lakeside.', is_urgent: false },
+          ];
 
-        <View style={styles.newsGrid}>
-          {NEWS_ITEMS.slice(1).map((item) => (
-            <TouchableOpacity key={item.title} activeOpacity={0.9} style={styles.newsItemCard}>
-              <Image source={{ uri: item.image }} style={styles.newsThumb} />
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={2} style={styles.newsItemTitle}>{item.title}</Text>
-                <Text style={styles.newsItemTime}>{item.time}</Text>
+          const feed = (notices.length ? notices : fallbackNotices).slice(0, 5);
+          const urgentItem = feed.find((item) => item.is_urgent) || feed[0];
+          const secondaryItems = feed.filter((item) => item.notice_id !== urgentItem?.notice_id).slice(0, 4);
+
+          return (
+            <>
+              <TouchableOpacity activeOpacity={0.92} style={styles.heroNewsCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                <LinearGradient
+                  colors={[Colors.primary, Colors.primaryContainer]}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+                <View style={styles.heroNewsOverlay}>
+                  <View style={styles.heroTagWrap}>
+                    <Text style={styles.heroTag}>{urgentItem?.category || 'NOTICE'}</Text>
+                    <Text style={styles.heroLatest}>{urgentItem?.is_urgent ? 'URGENT' : 'LATEST'}</Text>
+                  </View>
+                  <Text style={styles.heroNewsTitle}>{urgentItem ? (urgentItem.title || urgentItem.title_ne || 'Notice') : 'Latest Notice'}</Text>
+                  <Text style={styles.heroNewsSummary}>{urgentItem?.content || 'Open the notices board to see the latest official updates.'}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.newsGrid}>
+                {secondaryItems.map((item) => (
+                  <TouchableOpacity key={item.notice_id} activeOpacity={0.9} style={styles.newsItemCard} onPress={() => navigation.navigate('CitizenPortal')}>
+                    <View style={[styles.newsThumb, { alignItems: 'center', justifyContent: 'center', backgroundColor: item.is_urgent ? '#FEE2E2' : Colors.primaryFixed }]}>
+                      <MaterialIcons
+                        name={(item.is_urgent ? 'campaign' : item.category === 'HEALTH' ? 'local-hospital' : item.category === 'INFRASTRUCTURE' ? 'construction' : 'article') as any}
+                        size={22}
+                        color={item.is_urgent ? Colors.secondary : Colors.primary}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={2} style={styles.newsItemTitle}>{item.title || item.title_ne || 'Notice'}</Text>
+                      <Text numberOfLines={2} style={styles.newsItemTime}>{item.content || 'Official update'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+            </>
+          );
+        })()}
 
         {/* E-Sewa Services */}
         <View style={styles.sectionHeader}>
@@ -678,6 +726,39 @@ export default function HomeScreen({ navigation }: any) {
         )}
 
       </ScrollView>
+
+      <Modal
+        visible={Boolean(selectedStory)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedStory(null)}
+      >
+        <TouchableOpacity style={styles.storyModalBackdrop} activeOpacity={1} onPress={() => setSelectedStory(null)}>
+          <TouchableOpacity style={styles.storyModalCard} activeOpacity={1} onPress={() => {}}>
+            <ImageBackground source={{ uri: selectedStory?.image }} style={styles.storyModalImage} imageStyle={styles.storyModalImageClip}>
+              <LinearGradient colors={['rgba(0,0,0,0.12)', 'rgba(0,0,0,0.82)']} style={StyleSheet.absoluteFill} />
+              <View style={styles.storyModalContent}>
+                <View style={styles.storyModalHeader}>
+                  <Text style={styles.storyModalTag}>{selectedStory?.tag || 'Update'}</Text>
+                  <TouchableOpacity style={styles.storyModalClose} onPress={() => setSelectedStory(null)}>
+                    <MaterialIcons name="close" size={18} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.storyModalTitle}>{selectedStory?.title}</Text>
+                <Text style={styles.storyModalSummary}>{selectedStory?.summary}</Text>
+                <View style={styles.storyModalActions}>
+                  <TouchableOpacity style={styles.storyModalPrimary} onPress={() => { setSelectedStory(null); navigation.navigate('CitizenPortal'); }}>
+                    <Text style={styles.storyModalPrimaryText}>Open notice board</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.storyModalSecondary} onPress={() => setSelectedStory(null)}>
+                    <Text style={styles.storyModalSecondaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ImageBackground>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setShowMenu(false)}>
@@ -836,6 +917,155 @@ const styles = StyleSheet.create({
   sectionTitle: { ...Typography.title, color: Colors.primary },
   sectionSub: { fontWeight: '400', color: Colors.outline },
   viewAll: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  storyRow: { gap: 12, paddingRight: 12, paddingBottom: 8, marginBottom: 14 },
+  storyCard: {
+    width: 148,
+    height: 198,
+    borderRadius: 26,
+    overflow: 'hidden',
+    ...Shadow.md,
+  },
+  storyCardFeatured: {
+    width: 168,
+    height: 214,
+  },
+  storyImage: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  storyImageClip: {
+    borderRadius: 26,
+  },
+  storyTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+  },
+  storyBadge: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
+  storyBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  storyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#fff',
+    opacity: 0.82,
+  },
+  storyBottom: {
+    padding: 12,
+    gap: 6,
+  },
+  storyTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    lineHeight: 19,
+  },
+  storyMeta: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  storyModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(12, 20, 18, 0.52)',
+    padding: 16,
+    justifyContent: 'center',
+  },
+  storyModalCard: {
+    borderRadius: 30,
+    overflow: 'hidden',
+    backgroundColor: Colors.surface,
+    ...Shadow.lg,
+  },
+  storyModalImage: {
+    minHeight: 360,
+    justifyContent: 'flex-end',
+  },
+  storyModalImageClip: {
+    borderRadius: 30,
+  },
+  storyModalContent: {
+    padding: 18,
+    gap: 10,
+  },
+  storyModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  storyModalTag: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  storyModalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyModalTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  storyModalSummary: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  storyModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  storyModalPrimary: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: Radius.full,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  storyModalPrimaryText: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  storyModalSecondary: {
+    flex: 0.8,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: Radius.full,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  storyModalSecondaryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   noticesRow: { gap: 14, paddingRight: 12, paddingBottom: 8, marginBottom: 14 },
   noticeItem: { alignItems: 'center', gap: 6, width: 72 },
   noticeCircle: {
