@@ -94,8 +94,10 @@ func main() {
 
 	officer := app.Group("/officer", middleware.RequireOfficer(cfg.JWTSecret))
 	officer.Get("/queue", handlers.GetQueue(db))
+	officer.Get("/request-pdf/:request_id", handlers.OfficerRequestPreviewPDF(db))
 	officer.Post("/approve", handlers.ApproveRequest(db, broker))
 	officer.Post("/reject", handlers.RejectRequest(db))
+	officer.Get("/news", handlers.ListOfficerNews(db))
 
 	// News routes
 	app.Get("/news/:wardCode", handlers.GetWardNews(db))

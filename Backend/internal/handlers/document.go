@@ -206,6 +206,12 @@ func DownloadDocumentPDF(db *database.DB) fiber.Handler {
 		req, err := db.GetServiceRequest(ctx, requestID)
 		if err != nil {
 			log.Printf("[PDF] Request not found: %s, error: %v", requestID, err)
+			return c.Status(500).JSON(fiber.Map{
+				"success": false,
+				"message": "Failed to fetch request",
+			})
+		}
+		if req == nil {
 			return c.Status(404).JSON(fiber.Map{
 				"success": false,
 				"message": "Request not found",
@@ -296,6 +302,135 @@ func DownloadDocumentPDF(db *database.DB) fiber.Handler {
 		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, pdfResult.Filename))
 		c.Set("Content-Type", "application/pdf")
 		c.Set("Cache-Control", "public, max-age=3600")
+		return c.Send(pdfResult.Bytes)
+	}
+}
+
+// OfficerRequestPreviewPDF handles GET /officer/request-pdf/:request_id
+// Generates a backend PDF preview for pending/under-review requests so officers can decide.
+func OfficerRequestPreviewPDF(db *database.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		requestID := c.Params("request_id")
+		if requestID == "" {
+			return c.Status(400).JSON(fiber.Map{
+				"success": false,
+				"message": "Request ID is required",
+			})
+		}
+
+		officerID, ok := c.Locals("officer_id").(string)
+		if !ok || officerID == "" {
+			return c.Status(401).JSON(fiber.Map{"success": false, "message": "Invalid officer context"})
+		}
+		wardCode, ok := c.Locals("ward_code").(string)
+		if !ok || wardCode == "" {
+			return c.Status(401).JSON(fiber.Map{"success": false, "message": "Invalid ward context"})
+		}
+
+		ctx := context.Background()
+		req, err := db.GetRequestByID(ctx, requestID)
+		if err != nil {
+			log.Printf("[PDF] Officer preview fetch failed for %s: %v", requestID, err)
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Failed to fetch request"})
+		}
+		if req == nil {
+			return c.Status(404).JSON(fiber.Map{"success": false, "message": "Request not found"})
+		}
+		if req.WardCode != wardCode {
+			return c.Status(403).JSON(fiber.Map{"success": false, "message": "Access denied for this ward"})
+		}
+
+		ward, err := db.GetWardDetails(ctx, req.WardCode)
+		if err != nil {
+			log.Printf("[PDF] Ward detail lookup failed for %s: %v", req.WardCode, err)
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Could not fetch ward details"})
+		}
+
+		officer, err := db.GetOfficerByID(ctx, officerID)
+		if err != nil || officer == nil {
+			officer = &models.Officer{FullName: "अधिकृत", Designation: "वडा कार्यालय"}
+		}
+
+		dobNepali := req.CitizenDOB
+		if dobNepali == "" {
+			dobNepali = "-"
+		} else if !strings.ContainsAny(dobNepali, "०१२३४५६७८९") {
+			dobNepali = convertToNepaliDate(req.CitizenDOB)
+		}
+
+		previewDTID := req.DTID
+		if previewDTID == "" {
+			previewDTID = "PREVIEW-" + req.RequestID
+		}
+		docHash := req.DocumentHash
+		if docHash == "" {
+			docHash = previewDTID
+		}
+		if len(docHash) > 16 {
+			docHash = docHash[:16]
+		}
+
+		issuedAt := req.SubmittedAt.UTC()
+		if !req.IssuedAt.IsZero() {
+			issuedAt = req.IssuedAt.UTC()
+		}
+		issuedDateBS := req.IssuedDateBS
+		if issuedDateBS == "" {
+			issuedDateBS = convertToNepaliDate(issuedAt.Format("2006-01-02"))
+		}
+		issuedTimeNP := req.IssuedTimeNP
+		if issuedTimeNP == "" {
+			issuedTimeNP = convertToNepaliNumerals(issuedAt.Format("15:04"))
+		}
+		validUntilBS := req.ValidUntilBS
+		if validUntilBS == "" {
+			validUntilBS = convertToNepaliDate(issuedAt.AddDate(0, 0, 30).Format("2006-01-02"))
+		}
+
+		pdfReq := &models.PDFRequest{
+			DTID:         previewDTID,
+			DocumentHash: docHash,
+			DocumentType: req.DocumentType,
+			RequestID:    req.RequestID,
+
+			CitizenName:    req.CitizenName,
+			CitizenNID:     req.CitizenNID,
+			CitizenDOB:     dobNepali,
+			CitizenGender:  convertGenderToNepali(req.CitizenGender),
+			CitizenAddress: req.CitizenAddress,
+			FatherName:     req.FatherName,
+			MotherName:     req.MotherName,
+
+			Purpose:        req.Purpose,
+			AdditionalInfo: req.AdditionalInfo,
+
+			OfficerName:  officer.FullName,
+			OfficerDesig: officer.Designation,
+			WardCode:     req.WardCode,
+			WardNumber:   ward.WardNumber,
+			DistrictName: ward.DistrictName,
+			ProvinceName: ward.ProvinceName,
+			OfficeName:   ward.OfficeName,
+			OfficePhone:  ward.OfficePhone,
+			OfficeEmail:  ward.OfficeEmail,
+
+			IssuedDateBS: issuedDateBS,
+			IssuedTimeNP: issuedTimeNP,
+			ValidUntilBS: validUntilBS,
+			IssuedAtUTC:  issuedAt,
+
+			VerifyURL: fmt.Sprintf("verify.pratibimba.gov.np/%s", previewDTID),
+		}
+
+		pdfResult, err := pdf.Generate(pdfReq)
+		if err != nil {
+			log.Printf("[PDF] Officer preview generation failed for %s: %v", requestID, err)
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Failed to generate preview PDF"})
+		}
+
+		c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, pdfResult.Filename))
+		c.Set("Content-Type", "application/pdf")
+		c.Set("Cache-Control", "no-store")
 		return c.Send(pdfResult.Bytes)
 	}
 }

@@ -50,6 +50,9 @@ Open `http://localhost:3000`.
 - `GET /officer/queue`
 - `POST /officer/approve`
 - `POST /officer/reject`
+- `GET /officer/news`
+- `POST /officer/news`
+- `GET /citizen/notices/:wardCode`
 - `GET /ministry/stats`
 - `GET /verify/:dtid`
 - `GET /ministry/integrity`

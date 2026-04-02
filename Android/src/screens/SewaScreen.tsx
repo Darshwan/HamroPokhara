@@ -12,6 +12,7 @@ import Toast from 'react-native-toast-message';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { citizenAPI } from '../api/client';
+import AppHeader from '../components/AppHeader';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -42,10 +43,25 @@ const GRIEVANCE_CATS = [
   { id: 'OTHER',        label: 'Other',        labelNE: 'अन्य',        icon: 'more-horiz'        },
 ];
 
+const NAGARIK_SEWAS = [
+  { id: 'ai', icon: 'smart-toy', label: 'AI Assistant', labelNE: 'AI सहायक' },
+  { id: 'grievance', icon: 'report-problem', label: 'Report 311', labelNE: '311 रिपोर्ट' },
+  { id: 'hearing', icon: 'how-to-vote', label: 'Public Hearing', labelNE: 'सार्वजनिक सुनुवाई' },
+  { id: 'tax', icon: 'payments', label: 'Tax & Fines', labelNE: 'कर र जरिमाना' },
+  { id: 'krishi', icon: 'eco', label: 'Krishi Anudan', labelNE: 'कृषि अनुदान' },
+  { id: 'bhatta', icon: 'elderly', label: 'Briddha Bhatta', labelNE: 'बृद्धभत्ता' },
+  { id: 'blood', icon: 'bloodtype', label: 'Blood Connect', labelNE: 'रक्त दान' },
+  { id: 'tourism', icon: 'landscape', label: 'Tourism Guide', labelNE: 'पर्यटन गाइड' },
+  { id: 'lost', icon: 'search', label: 'Lost & Found', labelNE: 'हराएको/भेटिएको' },
+  { id: 'volunteer', icon: 'volunteer-activism', label: 'Volunteer', labelNE: 'स्वयंसेवक' },
+  { id: 'digsig', icon: 'draw', label: 'Digital Sign', labelNE: 'डिजिटल हस्ताक्षर' },
+  { id: 'feedback', icon: 'star', label: 'Rate Officer', labelNE: 'अधिकारी मूल्यांकन' },
+];
+
 // ── Main Component ────────────────────────────────────────────
 
 export default function SewaScreen({ navigation }: any) {
-  const { citizen, myRequests } = useStore();
+  const { citizen, myRequests, language } = useStore();
   const nid      = citizen?.nid || '';
   const wardCode = citizen?.ward_code || 'NPL-04-33-09';
 
@@ -67,6 +83,31 @@ export default function SewaScreen({ navigation }: any) {
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [queueService, setQueueService]     = useState('SIFARIS');
   const [bookingQueue, setBookingQueue]     = useState(false);
+
+  const handleOpenNagarikSewa = (id: string) => {
+    if (id === 'ai') {
+      navigation.navigate('Assistant');
+      return;
+    }
+    if (id === 'grievance') {
+      setShowGrievanceModal(true);
+      return;
+    }
+    if (id === 'tax') {
+      navigation.navigate('Request');
+      return;
+    }
+    if (id === 'tourism') {
+      navigation.navigate('Request');
+      return;
+    }
+
+    Toast.show({
+      type: 'info',
+      text1: language === 'ne' ? 'छिट्टै आउँदैछ' : 'Coming soon',
+      text2: language === 'ne' ? 'यो सेवा अहिले विकासमा छ।' : 'This service is under active development.',
+    });
+  };
 
   // ── Load all data ───────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -219,19 +260,15 @@ export default function SewaScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerSub}>Digital Governance</Text>
-          <Text style={styles.headerTitle}>Pokhara Sewa Kendra</Text>
-        </View>
-        <View style={styles.wardChip}>
-          <MaterialIcons name="location-on" size={12} color={Colors.onPrimaryFixedVariant} />
-          <Text style={styles.wardChipText}>
-            Ward {citizen?.ward_code?.split('-')[3] || '9'}
-          </Text>
-        </View>
-      </View>
+      <AppHeader
+        title="Pokhara Sewa Kendra"
+        showMenu
+        showNotif
+        showLang
+        onMenu={() => navigation.navigate('Home')}
+        onNotif={() => Toast.show({ type: 'info', text1: 'No new notifications' })}
+        onLang={() => Toast.show({ type: 'info', text1: 'Language setting is available on main screens' })}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -263,6 +300,30 @@ export default function SewaScreen({ navigation }: any) {
             <Text style={styles.pratibimbaBtnText}>Open Camera Scan</Text>
           </View>
         </TouchableOpacity>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>{language === 'ne' ? '१२ नागरिक सेवाहरू' : '12 Nagarik Services'}</Text>
+            <MaterialIcons name="apps" size={20} color={Colors.primary} />
+          </View>
+          <View style={styles.nagarikGrid}>
+            {NAGARIK_SEWAS.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.nagarikTile}
+                onPress={() => handleOpenNagarikSewa(item.id)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.nagarikTileIcon}>
+                  <MaterialIcons name={item.icon as any} size={18} color={Colors.primary} />
+                </View>
+                <Text numberOfLines={2} style={styles.nagarikTileText}>
+                  {language === 'ne' ? item.labelNE : item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         {/* ── LIVE STATUS TRACKER (Real Data from PRATIBIMBA) ─────── */}
         <View style={styles.card}>
@@ -638,11 +699,6 @@ export default function SewaScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container:           { flex: 1, backgroundColor: Colors.background },
-  header:              { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant },
-  headerSub:           { fontSize: 10, fontWeight: '700', color: Colors.primary, opacity: 0.6, letterSpacing: 1.5, textTransform: 'uppercase' },
-  headerTitle:         { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: -0.5 },
-  wardChip:            { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryFixed, paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full },
-  wardChipText:        { fontSize: 11, fontWeight: '700', color: Colors.onPrimaryFixedVariant },
   scroll:              { padding: 16, gap: 14, paddingBottom: 40 },
 
   // PRATIBIMBA Card
@@ -658,6 +714,10 @@ const styles = StyleSheet.create({
   card:                { backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.xl, padding: 20, ...Shadow.sm },
   cardHeader:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   cardTitle:           { fontSize: 16, fontWeight: '700', color: Colors.primary },
+  nagarikGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  nagarikTile:         { width: '31.5%', backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1, borderColor: Colors.outlineVariant },
+  nagarikTileIcon:     { width: 32, height: 32, borderRadius: Radius.full, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  nagarikTileText:     { fontSize: 11, fontWeight: '700', color: Colors.primary, textAlign: 'center', lineHeight: 15 },
   emptyState:          { alignItems: 'center', padding: 24, gap: 8 },
   emptyText:           { fontSize: 13, color: Colors.onSurfaceVariant },
 

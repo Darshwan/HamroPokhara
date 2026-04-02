@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"pratibimba/internal/database"
+	"pratibimba/internal/sse"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -74,10 +76,16 @@ func GetWardNews(db *database.DB) fiber.Handler {
 }
 
 // POST /officer/news — officer posts a news item
-func PostNews(db *database.DB, broker interface{}) fiber.Handler {
+func PostNews(db *database.DB, broker *sse.Broker) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		officerID := c.Locals("officer_id").(string)
-		wardCode := c.Locals("ward_code").(string)
+		officerID, ok := c.Locals("officer_id").(string)
+		if !ok || officerID == "" {
+			return c.Status(401).JSON(fiber.Map{"success": false, "message": "Invalid officer context"})
+		}
+		wardCode, ok := c.Locals("ward_code").(string)
+		if !ok || wardCode == "" {
+			return c.Status(401).JSON(fiber.Map{"success": false, "message": "Invalid ward context"})
+		}
 
 		var req struct {
 			Title     string `json:"title"`
@@ -93,14 +101,37 @@ func PostNews(db *database.DB, broker interface{}) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
 		}
+		req.Title = strings.TrimSpace(req.Title)
+		req.TitleNE = strings.TrimSpace(req.TitleNE)
+		req.Body = strings.TrimSpace(req.Body)
+		req.BodyNE = strings.TrimSpace(req.BodyNE)
+		req.Category = strings.ToUpper(strings.TrimSpace(req.Category))
+		req.ImageURL = strings.TrimSpace(req.ImageURL)
+
 		if req.Title == "" || req.Body == "" {
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Title and body required"})
+		}
+		if len(req.Title) > 200 {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Title too long"})
+		}
+		if len(req.Body) > 5000 {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Body too long"})
 		}
 		if req.Category == "" {
 			req.Category = "GENERAL"
 		}
+		allowedCategory := map[string]struct{}{
+			"URGENT": {}, "INFRASTRUCTURE": {}, "HEALTH": {}, "CULTURE": {}, "TOURISM": {},
+			"GENERAL": {}, "WATER": {}, "ELECTRICITY": {}, "ROAD": {},
+		}
+		if _, ok := allowedCategory[req.Category]; !ok {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid category"})
+		}
 		if req.Priority < 0 || req.Priority > 3 {
 			req.Priority = 0
+		}
+		if req.ExpiresIn < 0 || req.ExpiresIn > 365 {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid expiry window"})
 		}
 
 		ctx := context.Background()
@@ -126,12 +157,85 @@ func PostNews(db *database.DB, broker interface{}) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Failed to post news"})
 		}
 
+		if broker != nil {
+			broker.Publish("WARD_NEWS_PUBLISHED", map[string]interface{}{
+				"news_id":    newsID,
+				"ward_code":  wardCode,
+				"officer_id": officerID,
+				"category":   req.Category,
+				"priority":   req.Priority,
+				"published":  time.Now().UTC(),
+			})
+		}
+
 		log.Printf("[News] Posted: %s by %s (priority %d)", newsID, officerID, req.Priority)
 		return c.Status(201).JSON(fiber.Map{
 			"success": true,
 			"news_id": newsID,
 			"message": "News published to ward",
 		})
+	}
+}
+
+// GET /officer/news — list recent ward news created by this officer's ward.
+func ListOfficerNews(db *database.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		wardCode, ok := c.Locals("ward_code").(string)
+		if !ok || wardCode == "" {
+			return c.Status(401).JSON(fiber.Map{"success": false, "message": "Invalid ward context"})
+		}
+		limit := c.QueryInt("limit", 30)
+		if limit < 1 {
+			limit = 1
+		}
+		if limit > 100 {
+			limit = 100
+		}
+
+		ctx := context.Background()
+		rows, err := db.Pool.Query(ctx, `
+            SELECT news_id, title, COALESCE(title_ne,''), body, COALESCE(body_ne,''),
+                   category, priority, COALESCE(image_url,''), is_published,
+                   published_at, expires_at, COALESCE(view_count,0), officer_id, ward_code
+            FROM ward_news
+            WHERE ward_code = $1 OR ward_code = 'ALL'
+            ORDER BY published_at DESC
+            LIMIT $2
+        `, wardCode, limit)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": "Database error"})
+		}
+		defer rows.Close()
+
+		type OfficerNews struct {
+			NewsID      string     `json:"news_id"`
+			Title       string     `json:"title"`
+			TitleNE     string     `json:"title_ne"`
+			Body        string     `json:"body"`
+			BodyNE      string     `json:"body_ne"`
+			Category    string     `json:"category"`
+			Priority    int        `json:"priority"`
+			ImageURL    string     `json:"image_url"`
+			IsPublished bool       `json:"is_published"`
+			PublishedAt time.Time  `json:"published_at"`
+			ExpiresAt   *time.Time `json:"expires_at"`
+			ViewCount   int        `json:"view_count"`
+			OfficerID   string     `json:"officer_id"`
+			WardCode    string     `json:"ward_code"`
+		}
+
+		items := make([]OfficerNews, 0, limit)
+		for rows.Next() {
+			var n OfficerNews
+			if err := rows.Scan(&n.NewsID, &n.Title, &n.TitleNE, &n.Body, &n.BodyNE,
+				&n.Category, &n.Priority, &n.ImageURL, &n.IsPublished, &n.PublishedAt,
+				&n.ExpiresAt, &n.ViewCount, &n.OfficerID, &n.WardCode); err != nil {
+				continue
+			}
+			items = append(items, n)
+		}
+
+		return c.JSON(fiber.Map{"success": true, "news": items, "count": len(items)})
 	}
 }
 

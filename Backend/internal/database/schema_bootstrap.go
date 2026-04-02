@@ -86,6 +86,27 @@ func (db *DB) ensureCoreAuthSchema(ctx context.Context) error {
 			ip_address       VARCHAR(45),
 			created_at       TIMESTAMPTZ   DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS ward_news (
+			id              BIGSERIAL     PRIMARY KEY,
+			news_id         VARCHAR(60)   UNIQUE NOT NULL,
+			officer_id      VARCHAR(60)   NOT NULL,
+			ward_code       VARCHAR(20)   NOT NULL,
+			title           VARCHAR(200)  NOT NULL,
+			title_ne        VARCHAR(200),
+			body            TEXT          NOT NULL,
+			body_ne         TEXT,
+			category        VARCHAR(30)   NOT NULL DEFAULT 'GENERAL'
+			                CHECK (category IN ('URGENT','INFRASTRUCTURE','HEALTH','CULTURE','TOURISM','GENERAL','WATER','ELECTRICITY','ROAD')),
+			priority        SMALLINT      DEFAULT 0,
+			image_url       TEXT,
+			is_published    BOOLEAN       DEFAULT true,
+			published_at    TIMESTAMPTZ   DEFAULT NOW(),
+			expires_at      TIMESTAMPTZ,
+			view_count      INTEGER       DEFAULT 0
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_news_ward     ON ward_news(ward_code, is_published)`,
+		`CREATE INDEX IF NOT EXISTS idx_news_priority ON ward_news(priority DESC, published_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_news_category ON ward_news(category)`,
 		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS citizen_dob VARCHAR(30)`,
 		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS citizen_gender VARCHAR(20)`,
 		`ALTER TABLE IF EXISTS service_requests ADD COLUMN IF NOT EXISTS citizen_address VARCHAR(200)`,

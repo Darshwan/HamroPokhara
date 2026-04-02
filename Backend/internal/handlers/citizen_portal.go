@@ -117,12 +117,36 @@ func GetNotices(db *database.DB) fiber.Handler {
 		ctx := context.Background()
 
 		rows, err := db.Pool.Query(ctx, `
-            SELECT notice_id, title, COALESCE(title_ne,''), category,
-                   COALESCE(content,''), is_urgent,
-                   published_at, COALESCE(ward_code,'')
-            FROM notices
-            WHERE (ward_code = $1 OR ward_code IS NULL)
-              AND (expires_at IS NULL OR expires_at > NOW())
+	     SELECT notice_id, title, title_ne, category,
+		     content, is_urgent, published_at, ward_code
+	     FROM (
+		  SELECT n.notice_id,
+			  n.title,
+			  COALESCE(n.title_ne,'') AS title_ne,
+			  n.category,
+			  COALESCE(n.content,'') AS content,
+			  n.is_urgent,
+			  n.published_at,
+			  COALESCE(n.ward_code,'') AS ward_code
+		  FROM notices n
+		  WHERE (n.ward_code = $1 OR n.ward_code IS NULL)
+		    AND (n.expires_at IS NULL OR n.expires_at > NOW())
+
+		  UNION ALL
+
+		  SELECT wn.news_id AS notice_id,
+			  wn.title,
+			  COALESCE(wn.title_ne,'') AS title_ne,
+			  wn.category,
+			  COALESCE(wn.body,'') AS content,
+			  (wn.priority >= 2) AS is_urgent,
+			  wn.published_at,
+			  wn.ward_code
+		  FROM ward_news wn
+		  WHERE (wn.ward_code = $1 OR wn.ward_code = 'ALL')
+		    AND wn.is_published = true
+		    AND (wn.expires_at IS NULL OR wn.expires_at > NOW())
+	     ) merged
             ORDER BY is_urgent DESC, published_at DESC
             LIMIT 20
         `, wardCode)

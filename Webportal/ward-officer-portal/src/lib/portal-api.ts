@@ -2,6 +2,8 @@ import {
   type ApprovalResult,
   type DashboardStats,
   type IntegrityResult,
+  type NoticeCreatePayload,
+  type NoticeItem,
   type Officer,
   type QueueRequest,
   type VerifyResponse,
@@ -212,6 +214,31 @@ export async function runIntegrity(token: string): Promise<IntegrityResult> {
       verdict: "ALL RECORDS INTACT",
     };
   }
+}
+
+export async function fetchOfficerNotices(token: string): Promise<NoticeItem[]> {
+  try {
+    const data = await apiFetch<{ success: boolean; news: NoticeItem[] }>("/officer/news", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data.news || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createOfficerNotice(token: string, payload: NoticeCreatePayload): Promise<{ news_id: string }> {
+  const data = await apiFetch<{ success: boolean; news_id: string; message?: string }>("/officer/news", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+
+  if (!data.success || !data.news_id) {
+    throw new Error(data.message || "Failed to publish notice");
+  }
+
+  return { news_id: data.news_id };
 }
 
 export function toDocumentLabel(type: string): string {

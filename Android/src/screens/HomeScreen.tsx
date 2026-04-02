@@ -1,14 +1,74 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, Modal,
+  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, Modal, Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow, Typography } from '../constants/theme';
 import { useStore } from '../store/useStore';
-import { statsAPI } from '../api/client';
+import { statsAPI, weatherAPI } from '../api/client';
 import AppHeader from '../components/AppHeader';
+
+type WeatherCardData = {
+  temperature: number;
+  weatherCode: number;
+  isDay: boolean;
+  humidity: number;
+  visibilityKm: number;
+  uvIndex: number;
+  aqi: number;
+};
+
+const DEFAULT_WEATHER: WeatherCardData = {
+  temperature: 24,
+  weatherCode: 1,
+  isDay: true,
+  humidity: 62,
+  visibilityKm: 10,
+  uvIndex: 2,
+  aqi: 42,
+};
+
+const getWeatherCondition = (code: number) => {
+  if (code === 0) return 'Clear Sky';
+  if (code <= 2) return 'Mostly Sunny';
+  if (code === 3) return 'Cloudy';
+  if (code >= 45 && code <= 48) return 'Foggy';
+  if (code >= 51 && code <= 67) return 'Rainy';
+  if (code >= 71 && code <= 77) return 'Snow';
+  if (code >= 80 && code <= 86) return 'Rain Showers';
+  if (code >= 95) return 'Thunderstorm';
+  return 'Weather Update';
+};
+
+const getWeatherIcon = (code: number, isDay: boolean) => {
+  if (code === 0) return isDay ? 'wb-sunny' : 'nights-stay';
+  if (code <= 3) return 'wb-cloudy';
+  if (code >= 45 && code <= 48) return 'blur-on';
+  if (code >= 51 && code <= 67) return 'grain';
+  if (code >= 71 && code <= 77) return 'ac-unit';
+  if (code >= 80 && code <= 86) return 'umbrella';
+  if (code >= 95) return 'flash-on';
+  return 'wb-sunny';
+};
+
+const getUVLabel = (uvIndex: number) => {
+  if (uvIndex < 3) return 'Low';
+  if (uvIndex < 6) return 'Moderate';
+  if (uvIndex < 8) return 'High';
+  if (uvIndex < 11) return 'Very High';
+  return 'Extreme';
+};
+
+const getAQIState = (aqi: number) => {
+  if (aqi <= 50) return 'Excellent';
+  if (aqi <= 100) return 'Moderate';
+  if (aqi <= 150) return 'Sensitive';
+  if (aqi <= 200) return 'Unhealthy';
+  if (aqi <= 300) return 'Very Unhealthy';
+  return 'Hazardous';
+};
 
 const SERVICES = [
   { icon: 'receipt-long', label: 'Pay Tax',    screen: 'Request' },
@@ -75,9 +135,54 @@ const NEWS_ITEMS = [
   },
 ];
 
+type SearchResult = {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  screen: string;
+  keywords: string[];
+};
+
+const tokenize = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+const scoreSearchResult = (query: string, item: SearchResult) => {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+
+  const title = item.title.toLowerCase();
+  const subtitle = item.subtitle.toLowerCase();
+  const keywordText = item.keywords.join(' ').toLowerCase();
+
+  if (title === q) return 100;
+  if (title.startsWith(q)) return 85;
+  if (title.includes(q)) return 70;
+  if (keywordText.includes(q)) return 55;
+  if (subtitle.includes(q)) return 40;
+
+  const qTokens = tokenize(q);
+  if (!qTokens.length) return 0;
+  let tokenScore = 0;
+  qTokens.forEach((token) => {
+    if (title.includes(token)) tokenScore += 12;
+    else if (keywordText.includes(token)) tokenScore += 8;
+    else if (subtitle.includes(token)) tokenScore += 4;
+  });
+
+  return tokenScore;
+};
+
 export default function HomeScreen({ navigation }: any) {
   const { citizen, tourist, isTourist, logout } = useStore();
   const [stats, setStats] = useState<any>(null);
+  const [weather, setWeather] = useState<WeatherCardData>(DEFAULT_WEATHER);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
@@ -91,15 +196,131 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  const loadWeather = async () => {
+    try {
+      const res = await weatherAPI.getPokharaWeather();
+      if (!res.success || !res.weather) return;
+
+      const nextWeather: WeatherCardData = {
+        temperature: Number(res.weather.temperature ?? DEFAULT_WEATHER.temperature),
+        weatherCode: Number(res.weather.weatherCode ?? DEFAULT_WEATHER.weatherCode),
+        isDay: Boolean(res.weather.isDay),
+        humidity: Number(res.weather.humidity ?? DEFAULT_WEATHER.humidity),
+        visibilityKm: Number((Number(res.weather.visibilityMeters ?? DEFAULT_WEATHER.visibilityKm * 1000) / 1000).toFixed(1)),
+        uvIndex: Number(res.weather.uvIndexMax ?? DEFAULT_WEATHER.uvIndex),
+        aqi: Number(res.weather.aqi ?? DEFAULT_WEATHER.aqi),
+      };
+
+      setWeather(nextWeather);
+    } catch {
+      // Keep fallback defaults on fetch failures
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadStats();
+    await Promise.all([loadStats(), loadWeather()]);
     setRefreshing(false);
   };
 
-  useEffect(() => { loadStats(); }, []);
+  useEffect(() => {
+    loadStats();
+    loadWeather();
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim().toLowerCase());
+    }, 180);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
 
   const menuItems = isTourist ? TOURIST_MENU : CITIZEN_MENU;
+
+  const searchableItems = useMemo<SearchResult[]>(() => {
+    if (isTourist) {
+      const serviceItems = TOURIST_SERVICES.map((item) => ({
+        id: `tourist-service-${item.label}`,
+        title: item.label,
+        subtitle: item.desc,
+        icon: item.icon,
+        screen: item.screen,
+        keywords: [item.label, item.desc, 'tourist', 'service', 'pokhara'],
+      }));
+
+      const menuSearchItems = TOURIST_MENU.map((item) => ({
+        id: `tourist-menu-${item.label}`,
+        title: item.label,
+        subtitle: 'Quick menu action',
+        icon: item.icon,
+        screen: item.screen,
+        keywords: [item.label, 'menu', 'tourist'],
+      }));
+
+      return [...serviceItems, ...menuSearchItems];
+    }
+
+    const serviceItems = SERVICES.map((item) => ({
+      id: `citizen-service-${item.label}`,
+      title: item.label,
+      subtitle: 'E-Sewa service',
+      icon: item.icon,
+      screen: item.screen,
+      keywords: [item.label, 'service', 'citizen', 'esewa'],
+    }));
+
+    const menuSearchItems = CITIZEN_MENU.map((item) => ({
+      id: `citizen-menu-${item.label}`,
+      title: item.label,
+      subtitle: 'Citizen menu action',
+      icon: item.icon,
+      screen: item.screen,
+      keywords: [item.label, 'menu', 'citizen', 'ward'],
+    }));
+
+    const noticeItems = NOTICES.map((item) => ({
+      id: `notice-${item}`,
+      title: `${item} Notice`,
+      subtitle: 'Municipal notice category',
+      icon: 'campaign',
+      screen: 'Request',
+      keywords: [item, 'notice', 'suchana', 'announcement'],
+    }));
+
+    const newsItems = NEWS_ITEMS.slice(0, 3).map((item) => ({
+      id: `news-${item.title}`,
+      title: item.title,
+      subtitle: 'Pokhara Samachar',
+      icon: 'newspaper',
+      screen: 'Track',
+      keywords: ['news', 'samachar', 'pokhara', item.title],
+    }));
+
+    return [...serviceItems, ...menuSearchItems, ...noticeItems, ...newsItems];
+  }, [isTourist]);
+
+  const searchResults = useMemo(() => {
+    if (!debouncedQuery) {
+      return searchableItems.slice(0, 5);
+    }
+
+    return searchableItems
+      .map((item) => ({ item, score: scoreSearchResult(debouncedQuery, item) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map((entry) => entry.item);
+  }, [debouncedQuery, searchableItems]);
+
+  const showSearchPanel = !isTourist && (searchQuery.trim().length > 0 || debouncedQuery.length > 0);
+
+  const handleSearchSelect = (item: SearchResult) => {
+    setSearchQuery('');
+    setDebouncedQuery('');
+    Keyboard.dismiss();
+    navigation.navigate(item.screen);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -182,11 +403,60 @@ export default function HomeScreen({ navigation }: any) {
                 style={styles.searchInput}
                 placeholder="What do you need today?"
                 placeholderTextColor={Colors.outline}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                onSubmitEditing={() => {
+                  if (searchResults.length) {
+                    handleSearchSelect(searchResults[0]);
+                  }
+                }}
               />
-              <TouchableOpacity style={styles.micBtn}>
-                <MaterialIcons name="mic" size={20} color="#fff" />
+              <TouchableOpacity
+                style={styles.micBtn}
+                onPress={() => {
+                  if (searchQuery.trim()) {
+                    setSearchQuery('');
+                    setDebouncedQuery('');
+                    Keyboard.dismiss();
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name={searchQuery.trim() ? 'close' : 'mic'} size={20} color="#fff" />
               </TouchableOpacity>
             </View>
+
+            {showSearchPanel && (
+              <View style={styles.searchResultsCard}>
+                {searchResults.length ? (
+                  searchResults.map((item, index) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.searchResultRow, index === searchResults.length - 1 && styles.searchResultRowLast]}
+                      activeOpacity={0.8}
+                      onPress={() => handleSearchSelect(item)}
+                    >
+                      <View style={styles.searchResultIcon}>
+                        <MaterialIcons name={item.icon as any} size={18} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={styles.searchResultTitle}>{item.title}</Text>
+                        <Text numberOfLines={1} style={styles.searchResultSubtitle}>{item.subtitle}</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.searchEmptyState}>
+                    <MaterialIcons name="search-off" size={18} color={Colors.outline} />
+                    <Text style={styles.searchEmptyText}>No matching services found</Text>
+                  </View>
+                )}
+              </View>
+            )}
           </>
         )}
 
@@ -218,8 +488,8 @@ export default function HomeScreen({ navigation }: any) {
 
         {!isTourist && (
           <>
-            {/* Weather + Ward bento */}
-            <View style={styles.bentoRow}>
+            {/* Weather */}
+            <View style={styles.fullWidthRow}>
               {/* Weather */}
               <View style={styles.weatherCard}>
                 <LinearGradient
@@ -231,33 +501,36 @@ export default function HomeScreen({ navigation }: any) {
                   <Text style={styles.weatherBadgeText}>Atmosphere Today</Text>
                 </View>
                 <View style={styles.weatherMain}>
-                  <MaterialIcons name="wb-sunny" size={44} color="#fff" />
+                  <MaterialIcons name={getWeatherIcon(weather.weatherCode, weather.isDay) as any} size={44} color="#fff" />
                   <View>
-                    <Text style={styles.tempText}>24°C</Text>
-                    <Text style={styles.condText}>Mostly Sunny · Pokhara-6</Text>
+                    <Text style={styles.tempText}>{Math.round(weather.temperature)}°C</Text>
+                    <Text style={styles.condText}>{getWeatherCondition(weather.weatherCode)} · Pokhara-6</Text>
                   </View>
                   <View style={styles.aqiBox}>
                     <Text style={styles.aqiLabel}>AQI Index</Text>
-                    <Text style={styles.aqiNum}>42</Text>
-                    <Text style={styles.aqiState}>Excellent</Text>
+                    <Text style={styles.aqiNum}>{Math.round(weather.aqi)}</Text>
+                    <Text style={styles.aqiState}>{getAQIState(weather.aqi)}</Text>
                   </View>
                 </View>
                 <View style={styles.weatherStats}>
                   <View style={styles.weatherStat}>
                     <Text style={styles.weatherStatLabel}>Humidity</Text>
-                    <Text style={styles.weatherStatVal}>62%</Text>
+                    <Text style={styles.weatherStatVal}>{Math.round(weather.humidity)}%</Text>
                   </View>
                   <View style={styles.weatherStat}>
                     <Text style={styles.weatherStatLabel}>UV Index</Text>
-                    <Text style={styles.weatherStatVal}>Low</Text>
+                    <Text style={styles.weatherStatVal}>{getUVLabel(weather.uvIndex)}</Text>
                   </View>
                   <View style={styles.weatherStat}>
                     <Text style={styles.weatherStatLabel}>Visibility</Text>
-                    <Text style={styles.weatherStatVal}>10km</Text>
+                    <Text style={styles.weatherStatVal}>{weather.visibilityKm}km</Text>
                   </View>
                 </View>
               </View>
 
+            </View>
+
+            <View style={styles.fullWidthRow}>
               {/* Ward Card */}
               <View style={styles.wardCard}>
                 <View style={styles.wardTop}>
@@ -484,6 +757,58 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
+  searchResultsCard: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainer,
+    marginTop: -8,
+    marginBottom: 18,
+    overflow: 'hidden',
+    ...Shadow.sm,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.outlineVariant,
+  },
+  searchResultRowLast: {
+    borderBottomWidth: 0,
+  },
+  searchResultIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchResultTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  searchResultSubtitle: {
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  searchEmptyState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  searchEmptyText: {
+    fontSize: 12,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '600',
+  },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   sectionTitle: { ...Typography.title, color: Colors.primary },
   sectionSub: { fontWeight: '400', color: Colors.outline },
@@ -504,8 +829,8 @@ const styles = StyleSheet.create({
   },
   noticeLabel: { fontSize: 10, fontWeight: '700', color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.8, textAlign: 'center' },
   noticeLabelUrgent: { color: Colors.secondary },
-  bentoRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  weatherCard: { flex: 1.35, borderRadius: Radius.xl, padding: 18, overflow: 'hidden', ...Shadow.md },
+  fullWidthRow: { marginBottom: 12 },
+  weatherCard: { borderRadius: Radius.xl, padding: 18, overflow: 'hidden', ...Shadow.md },
   weatherBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(0,59,90,0.35)',
@@ -535,26 +860,26 @@ const styles = StyleSheet.create({
   weatherStatLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
   weatherStatVal: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
   wardCard: {
-    flex: 1, borderRadius: Radius.xl, padding: 16,
+    borderRadius: Radius.xl, padding: 18,
     backgroundColor: Colors.surfaceContainerLowest, ...Shadow.sm,
   },
-  wardTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  wardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   wardIcon: {
     width: 44, height: 44, borderRadius: Radius.lg,
     backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center',
   },
   wardBadge: {
     backgroundColor: Colors.primaryFixed,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
   },
-  wardBadgeText: { color: Colors.onPrimaryFixedVariant, fontSize: 10, fontWeight: '700' },
-  wardTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
-  wardDesc: { fontSize: 11, color: Colors.onSurfaceVariant, lineHeight: 16, marginBottom: 12 },
+  wardBadgeText: { color: Colors.onPrimaryFixedVariant, fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
+  wardTitle: { fontSize: 17, fontWeight: '800', color: Colors.primary, lineHeight: 22, marginBottom: 8 },
+  wardDesc: { fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 18, marginBottom: 14 },
   wardBtn: {
     backgroundColor: Colors.surfaceContainerHigh, borderRadius: Radius.lg,
-    paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 11, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
-  wardBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  wardBtnText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
   heroNewsCard: {
     borderRadius: Radius.xl,
     overflow: 'hidden',

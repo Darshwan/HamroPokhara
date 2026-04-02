@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   approveRequest,
+  createOfficerNotice,
   fetchDashboardStats,
+  fetchOfficerNotices,
   fetchQueue,
   loginOfficer,
   rejectRequest,
@@ -16,6 +18,7 @@ import type {
   DashboardStats,
   IntegrityResult,
   NavPage,
+  NoticeItem,
   Officer,
   QueueRequest,
   VerifyResponse,
@@ -29,12 +32,70 @@ const emptyStats: DashboardStats = {
   recent_entries: [],
 };
 
-const nav: Array<{ key: NavPage; label: string }> = [
-  { key: "dashboard", label: "Dashboard" },
-  { key: "queue", label: "Request Queue" },
-  { key: "verify", label: "Verify" },
-  { key: "integrity", label: "Integrity" },
+const nav: Array<{ key: NavPage }> = [
+  { key: "dashboard" },
+  { key: "queue" },
+  { key: "notices" },
+  { key: "verify" },
+  { key: "integrity" },
 ];
+
+const noticeCategories = ["GENERAL", "URGENT", "INFRASTRUCTURE", "HEALTH", "WATER", "ELECTRICITY", "ROAD", "CULTURE", "TOURISM"] as const;
+
+const copy = {
+  en: {
+    nav: {
+      dashboard: "Dashboard",
+      queue: "Request Queue",
+      notices: "Notices",
+      verify: "Verify",
+      integrity: "Integrity",
+    },
+    topTitle: "Digital Governance Desk",
+    topSub: "Connected to ward services and national traceability.",
+    refresh: "Refresh",
+    loginTitle: "Pratibimba Portal",
+    loginSub: "Sign in to access digital governance tools for citizen services.",
+    officerId: "Officer ID",
+    pin: "PIN",
+    login: "Login",
+    signingIn: "Signing in...",
+    logout: "Logout",
+    noticesTitle: "Publish Ward Notice",
+    noticesSub: "Published notices are visible in the Android app through citizen notices feed.",
+    publish: "Publish Notice",
+    publishing: "Publishing...",
+    recentNotices: "Recent Published Notices",
+    recentNoticesSub: "Latest notices visible to ward citizens in app.",
+    noNotices: "No notices published yet.",
+  },
+  np: {
+    nav: {
+      dashboard: "ड्यासबोर्ड",
+      queue: "अनुरोध सूची",
+      notices: "सूचना",
+      verify: "प्रमाणीकरण",
+      integrity: "अखण्डता जाँच",
+    },
+    topTitle: "डिजिटल सेवा डेस्क",
+    topSub: "वडा सेवा र राष्ट्रिय ट्रेसबिलिटीसँग जोडिएको।",
+    refresh: "रिफ्रेस",
+    loginTitle: "प्रतीबिम्ब पोर्टल",
+    loginSub: "नागरिक सेवाका लागि डिजिटल शासन उपकरणमा पहुँच गर्न लगइन गर्नुहोस्।",
+    officerId: "अधिकृत आईडी",
+    pin: "पिन",
+    login: "लगइन",
+    signingIn: "लगइन हुँदै...",
+    logout: "लगआउट",
+    noticesTitle: "वडा सूचना प्रकाशित गर्नुहोस्",
+    noticesSub: "प्रकाशित सूचना नागरिकको Android एपको notices feed मा देखिन्छ।",
+    publish: "सूचना प्रकाशित गर्नुहोस्",
+    publishing: "प्रकाशित हुँदै...",
+    recentNotices: "हालै प्रकाशित सूचना",
+    recentNoticesSub: "एपमा देखिने ताजा वडा सूचना।",
+    noNotices: "अहिलेसम्म कुनै सूचना प्रकाशित गरिएको छैन।",
+  },
+} as const;
 
 export default function Home() {
   const [token, setToken] = useState(() => {
@@ -56,11 +117,23 @@ export default function Home() {
   const [verifyInput, setVerifyInput] = useState("");
   const [verifyResult, setVerifyResult] = useState<VerifyResponse | null>(null);
   const [integrityResult, setIntegrityResult] = useState<IntegrityResult | null>(null);
+  const [notices, setNotices] = useState<NoticeItem[]>([]);
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [lang, setLang] = useState<"en" | "np">("en");
   const [nepaliTime, setNepaliTime] = useState("");
+  const text = copy[lang];
+  const [noticeForm, setNoticeForm] = useState({
+    title: "",
+    title_ne: "",
+    body: "",
+    body_ne: "",
+    category: "GENERAL",
+    priority: 0,
+    image_url: "",
+    expires_in_days: 0,
+  });
 
   useEffect(() => {
     const updateTime = () => {
@@ -93,12 +166,14 @@ export default function Home() {
   }, [queue, filter, query]);
 
   const refreshData = useCallback(async (authToken: string) => {
-    const [statsResult, queueResult] = await Promise.all([
+    const [statsResult, queueResult, noticesResult] = await Promise.all([
       fetchDashboardStats(authToken),
       fetchQueue(authToken),
+      fetchOfficerNotices(authToken),
     ]);
     setStats(statsResult);
     setQueue(queueResult);
+    setNotices(noticesResult);
     if (selectedRequest) {
       const found = queueResult.find((item) => item.request_id === selectedRequest.request_id) || null;
       setSelectedRequest(found);
@@ -117,7 +192,7 @@ export default function Home() {
     const officerId = String(formData.get("officerId") || "").trim();
     const pin = String(formData.get("pin") || "").trim();
     if (!officerId || !pin) {
-      setToast("Officer ID and PIN are required.");
+      setToast(lang === "np" ? "अधिकृत आईडी र पिन आवश्यक छ।" : "Officer ID and PIN are required.");
       return;
     }
 
@@ -126,7 +201,7 @@ export default function Home() {
     setLoading(false);
 
     if (!result.success) {
-      setToast(result.message || "Login failed.");
+      setToast(result.message || (lang === "np" ? "लगइन असफल भयो।" : "Login failed."));
       return;
     }
 
@@ -134,7 +209,7 @@ export default function Home() {
     localStorage.setItem("pratibimba_officer", JSON.stringify(result.data.officer));
     setToken(result.data.token);
     setOfficer(result.data.officer);
-    setToast(result.message || "Login successful.");
+    setToast(result.message || (lang === "np" ? "लगइन सफल भयो।" : "Login successful."));
   }
 
   async function handleApprove() {
@@ -183,12 +258,51 @@ export default function Home() {
     setIntegrityResult(result);
   }
 
+  async function handlePublishNotice() {
+    if (!token) return;
+    if (!noticeForm.title.trim() || !noticeForm.body.trim()) {
+      setToast(lang === "np" ? "शीर्षक र सामग्री आवश्यक छ।" : "Title and content are required.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await createOfficerNotice(token, {
+        title: noticeForm.title.trim(),
+        title_ne: noticeForm.title_ne.trim() || undefined,
+        body: noticeForm.body.trim(),
+        body_ne: noticeForm.body_ne.trim() || undefined,
+        category: noticeForm.category,
+        priority: noticeForm.priority,
+        image_url: noticeForm.image_url.trim() || undefined,
+        expires_in_days: noticeForm.expires_in_days > 0 ? noticeForm.expires_in_days : undefined,
+      });
+      setToast(lang === "np" ? `सूचना प्रकाशित भयो: ${result.news_id}` : `Notice published: ${result.news_id}`);
+      setNoticeForm({
+        title: "",
+        title_ne: "",
+        body: "",
+        body_ne: "",
+        category: "GENERAL",
+        priority: 0,
+        image_url: "",
+        expires_in_days: 0,
+      });
+      await refreshData(token);
+    } catch {
+      setToast(lang === "np" ? "सूचना प्रकाशित गर्न सकिएन। फेरि प्रयास गर्नुहोस्।" : "Failed to publish notice. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function logout() {
     localStorage.removeItem("pratibimba_token");
     localStorage.removeItem("pratibimba_officer");
     setOfficer(null);
     setToken("");
     setQueue([]);
+    setNotices([]);
     setSelectedRequest(null);
     setStats(emptyStats);
     setVerifyResult(null);
@@ -202,14 +316,14 @@ export default function Home() {
         <div className="w-full max-w-md rounded-[24px] border border-[var(--line)] bg-white p-8 shadow-[var(--shadow)] fade-up">
           <div className="mb-8">
             <p className="np text-[13px] tracking-wide text-[var(--mint-700)]">वडा अधिकृत प्रवेश</p>
-            <h1 className="mt-2 text-3xl font-semibold">Pratibimba Portal</h1>
+            <h1 className="mt-2 text-3xl font-semibold np">{text.loginTitle}</h1>
             <p className="mt-2 text-sm text-[var(--ink-500)]">
-              Sign in to access digital governance tools for citizen services.
+              <span className="np">{text.loginSub}</span>
             </p>
           </div>
           <form action={handleLogin} className="space-y-4">
             <label className="text-sm font-medium text-[var(--ink-700)]" htmlFor="officerId">
-              Officer ID
+              <span className="np">{text.officerId}</span>
             </label>
             <input
               id="officerId"
@@ -218,7 +332,7 @@ export default function Home() {
               className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-sm outline-none focus:border-[var(--mint-700)]"
             />
             <label className="text-sm font-medium text-[var(--ink-700)]" htmlFor="pin">
-              PIN
+              <span className="np">{text.pin}</span>
             </label>
             <input
               id="pin"
@@ -232,7 +346,7 @@ export default function Home() {
               disabled={loading}
               className="mt-3 w-full rounded-xl bg-[var(--mint-800)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
             >
-              {loading ? "Signing in..." : "Login"}
+              <span className="np">{loading ? text.signingIn : text.login}</span>
             </button>
           </form>
         </div>
@@ -267,7 +381,7 @@ export default function Home() {
                   page === item.key ? "bg-white/18 text-white" : "text-white/70 hover:bg-white/12"
                 }`}
               >
-                <span>{item.label}</span>
+                <span className="np">{text.nav[item.key]}</span>
                 {item.key === "queue" && (
                   <span className="rounded-full bg-[var(--coral)] px-2 py-0.5 text-xs font-bold text-white">
                     {pendingCount}
@@ -283,7 +397,7 @@ export default function Home() {
               onClick={logout}
               className="mt-3 rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/85 transition hover:bg-white/10"
             >
-              Logout
+              <span className="np">{text.logout}</span>
             </button>
           </div>
         </aside>
@@ -292,8 +406,8 @@ export default function Home() {
           {/* Top Navbar */}
           <div className="flex items-center justify-between border-b border-[var(--line)] bg-white px-5 py-3 lg:px-7">
             <div>
-              <h1 className="text-xl font-semibold text-[var(--ink-900)]">Digital Governance Desk</h1>
-              <p className="mt-0.5 text-xs text-[var(--ink-500)]">Connected to ward services and national traceability.</p>
+              <h1 className="np text-xl font-semibold text-[var(--ink-900)]">{text.topTitle}</h1>
+              <p className="np mt-0.5 text-xs text-[var(--ink-500)]">{text.topSub}</p>
             </div>
             <div className="flex items-center gap-4">
               {/* Language Toggle */}
@@ -322,7 +436,7 @@ export default function Home() {
                 onClick={() => void refreshData(token)}
                 className="rounded-lg border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink-700)] transition hover:bg-[var(--mint-50)]"
               >
-                ↻ Refresh
+                <span className="np">↻ {text.refresh}</span>
               </button>
             </div>
           </div>
@@ -460,6 +574,127 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {page === "notices" && (
+            <div className="fade-up grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
+              <div className="rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-5">
+                <h3 className="np text-xl font-semibold">{text.noticesTitle}</h3>
+                <p className="np mt-1 text-sm text-[var(--ink-500)]">
+                  {text.noticesSub}
+                </p>
+                <div className="mt-4 space-y-3">
+                  <input
+                    value={noticeForm.title}
+                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, title: event.target.value }))}
+                    placeholder="Title (English)"
+                    className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                  />
+                  <input
+                    value={noticeForm.title_ne}
+                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, title_ne: event.target.value }))}
+                    placeholder="Title (Nepali, optional)"
+                    className="np w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                  />
+                  <textarea
+                    value={noticeForm.body}
+                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, body: event.target.value }))}
+                    rows={4}
+                    placeholder="Notice content (English)"
+                    className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                  />
+                  <textarea
+                    value={noticeForm.body_ne}
+                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, body_ne: event.target.value }))}
+                    rows={3}
+                    placeholder="Notice content (Nepali, optional)"
+                    className="np w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                  />
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <select
+                      value={noticeForm.category}
+                      onChange={(event) => setNoticeForm((prev) => ({ ...prev, category: event.target.value }))}
+                      className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none"
+                    >
+                      {noticeCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={noticeForm.priority}
+                      onChange={(event) =>
+                        setNoticeForm((prev) => ({ ...prev, priority: Number(event.target.value) }))
+                      }
+                      className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none"
+                    >
+                      <option value={0}>Priority 0 - Normal</option>
+                      <option value={1}>Priority 1 - Important</option>
+                      <option value={2}>Priority 2 - Urgent</option>
+                      <option value={3}>Priority 3 - Critical</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={noticeForm.expires_in_days}
+                      onChange={(event) =>
+                        setNoticeForm((prev) => ({ ...prev, expires_in_days: Number(event.target.value || 0) }))
+                      }
+                      placeholder="Expiry days (0 = no expiry)"
+                      className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+
+                  <input
+                    value={noticeForm.image_url}
+                    onChange={(event) => setNoticeForm((prev) => ({ ...prev, image_url: event.target.value }))}
+                    placeholder="Image URL (optional)"
+                    className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm outline-none"
+                  />
+
+                  <button
+                    onClick={() => void handlePublishNotice()}
+                    disabled={loading}
+                    className="rounded-xl bg-[var(--mint-800)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    <span className="np">{loading ? text.publishing : text.publish}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[var(--radius-lg)] border border-[var(--line)] bg-white p-5">
+                <h3 className="np text-xl font-semibold">{text.recentNotices}</h3>
+                <p className="np mt-1 text-sm text-[var(--ink-500)]">{text.recentNoticesSub}</p>
+
+                <div className="mt-4 space-y-3">
+                  {notices.length === 0 && (
+                    <p className="rounded-xl bg-[var(--mint-50)] p-4 text-sm text-[var(--ink-500)]">
+                      <span className="np">{text.noNotices}</span>
+                    </p>
+                  )}
+                  {notices.map((item) => (
+                    <article key={item.news_id} className="rounded-xl border border-[var(--line)] p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[var(--mint-50)] px-2 py-1 text-xs font-semibold text-[var(--mint-800)]">
+                          {item.category}
+                        </span>
+                        <span className="rounded-full bg-[var(--surface-soft)] px-2 py-1 text-xs text-[var(--ink-700)]">
+                          Priority {item.priority}
+                        </span>
+                        <span className="ml-auto text-xs text-[var(--ink-500)]">{relativeTime(item.published_at)}</span>
+                      </div>
+                      <h4 className="mt-2 text-sm font-semibold text-[var(--ink-900)]">{item.title}</h4>
+                      {item.title_ne && <p className="np mt-1 text-sm text-[var(--ink-700)]">{item.title_ne}</p>}
+                      <p className="mt-2 text-sm text-[var(--ink-700)]">{item.body}</p>
+                      <p className="mt-3 text-xs text-[var(--ink-500)]">Views: {item.view_count.toLocaleString()}</p>
+                    </article>
+                  ))}
+                </div>
               </div>
             </div>
           )}

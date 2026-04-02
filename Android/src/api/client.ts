@@ -238,6 +238,46 @@ export const statsAPI = {
     api.get('/ministry/feed?limit=20'),
 };
 
+// ── WEATHER API (OPEN-METEO) ────────────────────────────────
+export const weatherAPI = {
+  getPokharaWeather: async () => {
+    const lat = 28.2096;
+    const lon = 83.9856;
+
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day,relative_humidity_2m,visibility&daily=uv_index_max&timezone=auto`;
+    const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi&timezone=auto`;
+
+    try {
+      const [weatherRes, aqiRes] = await Promise.all([
+        withTimeout(weatherUrl, { method: 'GET' }),
+        withTimeout(aqiUrl, { method: 'GET' }),
+      ]);
+
+      if (!weatherRes.ok || !aqiRes.ok) {
+        return { success: false, message: 'Unable to fetch weather data' };
+      }
+
+      const weatherData = await weatherRes.json();
+      const aqiData = await aqiRes.json();
+
+      return {
+        success: true,
+        weather: {
+          temperature: weatherData?.current?.temperature_2m,
+          weatherCode: weatherData?.current?.weather_code,
+          isDay: Boolean(weatherData?.current?.is_day),
+          humidity: weatherData?.current?.relative_humidity_2m,
+          visibilityMeters: weatherData?.current?.visibility,
+          uvIndexMax: weatherData?.daily?.uv_index_max?.[0],
+          aqi: aqiData?.current?.us_aqi,
+        },
+      };
+    } catch {
+      return { success: false, message: 'Unable to fetch weather data' };
+    }
+  },
+};
+
 // ── AI ASSISTANT API ─────────────────────────────────────────
 export const aiAPI = {
   askGovernmentAssistant: (payload: {
@@ -261,6 +301,23 @@ export const aiAPI = {
 // ── DOCUMENT API ──────────────────────────────────────────────
 export const documentAPI = {
   getPDFUrl: (dtid: string) => `${API_BASE}/document/pdf/${dtid}`,
+};
+
+// ── PAYMENT API ─────────────────────────────────────────────
+export const paymentAPI = {
+  createEsewaOrder: (payload: {
+    service_type: 'electricity' | 'water' | 'tax';
+    account_ref: string;
+    amount: number;
+    phone?: string;
+    citizen_nid?: string;
+  }) => api.post('/payments/esewa/create', payload),
+
+  verifyEsewaOrder: (payload: {
+    order_id: string;
+    transaction_uuid?: string;
+    ref_id?: string;
+  }) => api.post('/payments/esewa/verify', payload),
 };
 
 export default api;

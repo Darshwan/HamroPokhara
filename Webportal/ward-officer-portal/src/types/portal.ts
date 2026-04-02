@@ -1,4 +1,32 @@
-export type NavPage = "dashboard" | "queue" | "verify" | "integrity";
+export type NavPage = "dashboard" | "queue" | "verify" | "integrity" | "notices";
+
+export interface NoticeItem {
+  news_id: string;
+  title: string;
+  title_ne: string;
+  body: string;
+  body_ne: string;
+  category: string;
+  priority: number;
+  image_url: string;
+  is_published: boolean;
+  published_at: string;
+  expires_at?: string | null;
+  view_count: number;
+  officer_id: string;
+  ward_code: string;
+}
+
+export interface NoticeCreatePayload {
+  title: string;
+  title_ne?: string;
+  body: string;
+  body_ne?: string;
+  category: string;
+  priority: number;
+  image_url?: string;
+  expires_in_days?: number;
+}
 
 export interface Officer {
   officer_id: string;
