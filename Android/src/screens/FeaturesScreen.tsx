@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
     ScrollView, SafeAreaView, Modal, TextInput,
     ActivityIndicator, Alert, Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import Toast from 'react-native-toast-message';
 import * as Location from 'expo-location';
 import { Colors, Radius, Shadow } from '../constants/theme';
@@ -30,25 +31,71 @@ const TILES = [
     { id: 'feedback', icon: 'star', label: 'Rate Officer', labelNE: 'अधिकारी मूल्यांकन', color: '#F57F17', bg: '#FFFDE7' },
 ];
 
-export default function FeaturesScreen({ navigation }: any) {
+const WARD_OFFICER_ROSTER: Array<{
+    wardNo: string;
+    officers: Array<{ id: string; name: string; title: string }>;
+}> = [
+    { wardNo: '01', officers: [{ id: 'WO-01-01', name: 'Asha Gurung', title: 'Ward Officer' }, { id: 'WO-01-02', name: 'Bikash Shrestha', title: 'Assistant Officer' }] },
+    { wardNo: '02', officers: [{ id: 'WO-02-01', name: 'Mina Thapa', title: 'Ward Officer' }, { id: 'WO-02-02', name: 'Sandeep KC', title: 'Assistant Officer' }] },
+    { wardNo: '03', officers: [{ id: 'WO-03-01', name: 'Ramesh Karki', title: 'Ward Officer' }, { id: 'WO-03-02', name: 'Sujata Adhikari', title: 'Assistant Officer' }] },
+    { wardNo: '04', officers: [{ id: 'WO-04-01', name: 'Nirmala Rai', title: 'Ward Officer' }, { id: 'WO-04-02', name: 'Prakash Bhandari', title: 'Assistant Officer' }] },
+    { wardNo: '05', officers: [{ id: 'WO-05-01', name: 'Dipak Gurung', title: 'Ward Officer' }, { id: 'WO-05-02', name: 'Kriti Shakya', title: 'Assistant Officer' }] },
+    { wardNo: '06', officers: [{ id: 'WO-06-01', name: 'Sarita Tamang', title: 'Ward Officer' }, { id: 'WO-06-02', name: 'Suman Paudel', title: 'Assistant Officer' }] },
+    { wardNo: '07', officers: [{ id: 'WO-07-01', name: 'Hari Adhikari', title: 'Ward Officer' }, { id: 'WO-07-02', name: 'Anita KC', title: 'Assistant Officer' }] },
+    { wardNo: '08', officers: [{ id: 'WO-08-01', name: 'Keshav Poudel', title: 'Ward Officer' }, { id: 'WO-08-02', name: 'Rupa Gurung', title: 'Assistant Officer' }] },
+    { wardNo: '09', officers: [{ id: 'WO-09-01', name: 'Ram Bahadur Thapa', title: 'Ward Officer' }, { id: 'WO-09-02', name: 'Sita Bista', title: 'Assistant Officer' }] },
+    { wardNo: '10', officers: [{ id: 'WO-10-01', name: 'Anil Shrestha', title: 'Ward Officer' }, { id: 'WO-10-02', name: 'Madhavi Khatri', title: 'Assistant Officer' }] },
+    { wardNo: '11', officers: [{ id: 'WO-11-01', name: 'Dinesh Lama', title: 'Ward Officer' }, { id: 'WO-11-02', name: 'Sangita Joshi', title: 'Assistant Officer' }] },
+    { wardNo: '12', officers: [{ id: 'WO-12-01', name: 'Binod Gautam', title: 'Ward Officer' }, { id: 'WO-12-02', name: 'Puja Subedi', title: 'Assistant Officer' }] },
+    { wardNo: '13', officers: [{ id: 'WO-13-01', name: 'Kamal BK', title: 'Ward Officer' }, { id: 'WO-13-02', name: 'Maya Rana', title: 'Assistant Officer' }] },
+    { wardNo: '14', officers: [{ id: 'WO-14-01', name: 'Suresh Giri', title: 'Ward Officer' }, { id: 'WO-14-02', name: 'Ritu Koirala', title: 'Assistant Officer' }] },
+    { wardNo: '15', officers: [{ id: 'WO-15-01', name: 'Nabin Dahal', title: 'Ward Officer' }, { id: 'WO-15-02', name: 'Sushmita Neupane', title: 'Assistant Officer' }] },
+    { wardNo: '16', officers: [{ id: 'WO-16-01', name: 'Bimal Dhakal', title: 'Ward Officer' }, { id: 'WO-16-02', name: 'Kanchan Gurung', title: 'Assistant Officer' }] },
+    { wardNo: '17', officers: [{ id: 'WO-17-01', name: 'Rajan Tiwari', title: 'Ward Officer' }, { id: 'WO-17-02', name: 'Nisha Pahari', title: 'Assistant Officer' }] },
+    { wardNo: '18', officers: [{ id: 'WO-18-01', name: 'Pradeep Aarya', title: 'Ward Officer' }, { id: 'WO-18-02', name: 'Rekha Shahi', title: 'Assistant Officer' }] },
+    { wardNo: '19', officers: [{ id: 'WO-19-01', name: 'Sunil Bista', title: 'Ward Officer' }, { id: 'WO-19-02', name: 'Anju Chaudhary', title: 'Assistant Officer' }] },
+    { wardNo: '20', officers: [{ id: 'WO-20-01', name: 'Sanjay K.C.', title: 'Ward Officer' }, { id: 'WO-20-02', name: 'Pratima Rai', title: 'Assistant Officer' }] },
+    { wardNo: '21', officers: [{ id: 'WO-21-01', name: 'Arjun Bhandari', title: 'Ward Officer' }, { id: 'WO-21-02', name: 'Niruta Sharma', title: 'Assistant Officer' }] },
+    { wardNo: '22', officers: [{ id: 'WO-22-01', name: 'Mohan Sharma', title: 'Ward Officer' }, { id: 'WO-22-02', name: 'Rashmi Thapa', title: 'Assistant Officer' }] },
+    { wardNo: '23', officers: [{ id: 'WO-23-01', name: 'Ganesh Pariyar', title: 'Ward Officer' }, { id: 'WO-23-02', name: 'Samiksha Joshi', title: 'Assistant Officer' }] },
+    { wardNo: '24', officers: [{ id: 'WO-24-01', name: 'Kiran Adhikari', title: 'Ward Officer' }, { id: 'WO-24-02', name: 'Bindu Bhandari', title: 'Assistant Officer' }] },
+    { wardNo: '25', officers: [{ id: 'WO-25-01', name: 'Rabin Gurung', title: 'Ward Officer' }, { id: 'WO-25-02', name: 'Sneha Panta', title: 'Assistant Officer' }] },
+    { wardNo: '26', officers: [{ id: 'WO-26-01', name: 'Bhuwan Shrestha', title: 'Ward Officer' }, { id: 'WO-26-02', name: 'Manisha Lama', title: 'Assistant Officer' }] },
+    { wardNo: '27', officers: [{ id: 'WO-27-01', name: 'Tika Basnet', title: 'Ward Officer' }, { id: 'WO-27-02', name: 'Pallavi Karki', title: 'Assistant Officer' }] },
+    { wardNo: '28', officers: [{ id: 'WO-28-01', name: 'Hemant Khatri', title: 'Ward Officer' }, { id: 'WO-28-02', name: 'Sanjita Adhikari', title: 'Assistant Officer' }] },
+    { wardNo: '29', officers: [{ id: 'WO-29-01', name: 'Birendra Thapa', title: 'Ward Officer' }, { id: 'WO-29-02', name: 'Smriti Gurung', title: 'Assistant Officer' }] },
+    { wardNo: '30', officers: [{ id: 'WO-30-01', name: 'Anup Rai', title: 'Ward Officer' }, { id: 'WO-30-02', name: 'Kalpana Sharma', title: 'Assistant Officer' }] },
+    { wardNo: '31', officers: [{ id: 'WO-31-01', name: 'Jitendra K.C.', title: 'Ward Officer' }, { id: 'WO-31-02', name: 'Sangeeta Neupane', title: 'Assistant Officer' }] },
+    { wardNo: '32', officers: [{ id: 'WO-32-01', name: 'Mahesh Poudel', title: 'Ward Officer' }, { id: 'WO-32-02', name: 'Dipa Shakya', title: 'Assistant Officer' }] },
+    { wardNo: '33', officers: [{ id: 'WO-33-01', name: 'Bishnu Aryal', title: 'Ward Officer' }, { id: 'WO-33-02', name: 'Mina Koirala', title: 'Assistant Officer' }] },
+];
+
+export default function FeaturesScreen({ navigation, route, embedded = false }: any) {
     const { citizen, tourist, language } = useStore();
     const [activeFeature, setActiveFeature] = useState<string | null>(null);
     const lang = language;
 
+    useEffect(() => {
+        const openFeature = route?.params?.openFeature;
+        if (typeof openFeature === 'string' && openFeature) {
+            setActiveFeature(openFeature);
+        }
+    }, [route?.params?.openFeature]);
+
     const openFeature = (id: string) => setActiveFeature(id);
     const closeFeature = () => setActiveFeature(null);
 
-    return (
-        <SafeAreaView style={s.container}>
-            <AppHeader title={lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'} showMenu={false} showLang />
-            {/* Header */}
-            <View style={s.header}>
-                <Text style={s.headerTitle}>{lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'}</Text>
-                <Text style={s.headerSub}>{TILES.length} {lang === 'ne' ? 'सेवाहरू उपलब्ध' : 'services available'}</Text>
-            </View>
+    const content = (
+        <>
+            {!embedded && <AppHeader title={lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'} showMenu={false} showLang />}
+            {!embedded && (
+                <View style={s.header}>
+                    <Text style={s.headerTitle}>{lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'}</Text>
+                    <Text style={s.headerSub}>{TILES.length} {lang === 'ne' ? 'सेवाहरू उपलब्ध' : 'services available'}</Text>
+                </View>
+            )}
 
             <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-                {/* Bento grid */}
                 <View style={s.grid}>
                     {TILES.map(tile => (
                         <TouchableOpacity
@@ -68,7 +115,6 @@ export default function FeaturesScreen({ navigation }: any) {
                 </View>
             </ScrollView>
 
-            {/* Feature modals */}
             {activeFeature === 'ai' && <AIAssistantModal onClose={closeFeature} citizen={citizen} lang={lang} />}
             {activeFeature === 'grievance' && <GrievanceModal onClose={closeFeature} citizen={citizen} lang={lang} />}
             {activeFeature === 'hearing' && <HearingModal onClose={closeFeature} citizen={citizen} lang={lang} />}
@@ -81,8 +127,14 @@ export default function FeaturesScreen({ navigation }: any) {
             {activeFeature === 'bhatta' && <BhattaModal onClose={closeFeature} citizen={citizen} lang={lang} />}
             {activeFeature === 'tourism' && <TourismModal onClose={closeFeature} lang={lang} />}
             {activeFeature === 'tax' && <TaxModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-        </SafeAreaView>
+        </>
     );
+
+    if (embedded) {
+        return <View style={s.embeddedContainer}>{content}</View>;
+    }
+
+    return <SafeAreaView style={s.container}>{content}</SafeAreaView>;
 }
 
 // ── AI ASSISTANT ──────────────────────────────────────────────
@@ -307,6 +359,20 @@ function FeedbackModal({ onClose, citizen, lang }: any) {
     const [ratings, setRatings] = useState({ speed: 0, helpfulness: 0, transparency: 0 });
     const [comment, setComment] = useState('');
     const [loading, setLoading] = useState(false);
+    const [wardNo, setWardNo] = useState('09');
+    const [officerId, setOfficerId] = useState('WO-09-01');
+
+    const wardOfficers = useMemo(() => {
+        const ward = String(wardNo).padStart(2, '0');
+        const entry = WARD_OFFICER_ROSTER.find((item) => item.wardNo === ward);
+        return entry?.officers || [];
+    }, [wardNo, lang]);
+
+    useEffect(() => {
+        const ward = String(wardNo).padStart(2, '0');
+        const firstOfficer = WARD_OFFICER_ROSTER.find((item) => item.wardNo === ward)?.officers?.[0];
+        setOfficerId(firstOfficer?.id || `WO-${ward}-01`);
+    }, [wardNo]);
 
     const Star = ({ field, val }: { field: keyof typeof ratings; val: number }) => (
         <TouchableOpacity onPress={() => setRatings(r => ({ ...r, [field]: val }))}>
@@ -320,7 +386,8 @@ function FeedbackModal({ onClose, citizen, lang }: any) {
         try {
             await api.post('/feedback', {
                 citizen_nid: citizen?.nid || '',
-                officer_id: 'WO-04-33-09-001',
+                officer_id: officerId,
+                ward_no: wardNo,
                 speed_rating: ratings.speed,
                 helpfulness: ratings.helpfulness,
                 transparency: ratings.transparency,
@@ -341,14 +408,45 @@ function FeedbackModal({ onClose, citizen, lang }: any) {
         { label: 'Transparency', labelNE: 'पारदर्शिता', field: 'transparency' },
     ];
 
+    const selectedOfficer = wardOfficers.find((officer) => officer.id === officerId) || wardOfficers[0];
+
     return (
         <FeatureModal title={lang === 'ne' ? '⭐ अधिकारी मूल्यांकन' : '⭐ Rate Your Experience'} onClose={onClose}>
-            {/* Officer info */}
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'वडा नम्बर छान्नुहोस्' : 'Select Ward No.'}</Text>
+            <View style={mStyles.selectBox}>
+                <Picker
+                    selectedValue={wardNo}
+                    onValueChange={(value) => setWardNo(String(value))}
+                    style={mStyles.picker}
+                    dropdownIconColor={Colors.primary}
+                >
+                    {Array.from({ length: 33 }, (_, index) => String(index + 1).padStart(2, '0')).map((ward) => (
+                        <Picker.Item key={ward} label={`${lang === 'ne' ? 'वडा' : 'Ward'} ${ward}`} value={ward} />
+                    ))}
+                </Picker>
+            </View>
+
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'अधिकारी छान्नुहोस्' : 'Select Officer'}</Text>
+            <View style={mStyles.selectBox}>
+                <Picker
+                    selectedValue={officerId}
+                    onValueChange={(value) => setOfficerId(String(value))}
+                    style={mStyles.picker}
+                    dropdownIconColor={Colors.primary}
+                >
+                    {wardOfficers.map((officer) => (
+                        <Picker.Item key={officer.id} label={`${officer.title} · ${officer.name}`} value={officer.id} />
+                    ))}
+                </Picker>
+            </View>
+
             <View style={mStyles.officerCard}>
                 <View style={mStyles.officerAvatar}><MaterialIcons name="person" size={20} color={Colors.primary} /></View>
-                <View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.primary }}>Ram Bahadur Thapa</Text>
-                    <Text style={{ fontSize: 11, color: Colors.onSurfaceVariant }}>Ward Officer · WO-04-33-09-001</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.primary }}>{selectedOfficer?.name}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.onSurfaceVariant }}>
+                        {lang === 'ne' ? 'वडा' : 'Ward'} {wardNo} · {selectedOfficer?.title} · {officerId}
+                    </Text>
                 </View>
             </View>
 
@@ -834,7 +932,7 @@ function FeatureModal({ title, onClose, children }: { title: string; onClose: ()
                 <TouchableOpacity style={mStyles.sheet} activeOpacity={1} onPress={() => {}}>
                     <View style={mStyles.sheetHeader}>
                         <View style={{ flex: 1, paddingRight: 12 }}>
-                            <Text style={mStyles.sheetTitle}>{title}</Text>
+                            <Text numberOfLines={2} ellipsizeMode="tail" style={mStyles.sheetTitle}>{title}</Text>
                             <Text style={mStyles.sheetSub}>Tap outside or use the exit icon to close.</Text>
                         </View>
                         <TouchableOpacity style={mStyles.closeBtn} onPress={onClose}>
@@ -861,6 +959,7 @@ function SubmitButton({ loading, onPress, label }: { loading: boolean; onPress: 
 // ── STYLES ────────────────────────────────────────────────────
 const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8faf9' },
+    embeddedContainer: { flex: 1, backgroundColor: '#f8faf9' },
     header: { paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: Colors.outlineVariant },
     headerTitle: { fontSize: 20, fontWeight: '800', color: Colors.primary },
     headerSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
@@ -882,12 +981,12 @@ const s = StyleSheet.create({
 
 const mStyles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.52)', justifyContent: 'center', padding: 18 },
-    sheet: { backgroundColor: '#fff', borderRadius: 24, padding: 18, maxHeight: '88%', ...Shadow.lg },
-    sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 },
-    sheetTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary, flex: 1, lineHeight: 22 },
-    sheetSub: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 4, lineHeight: 16 },
-    closeBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
-    sheetBody: { paddingBottom: 4 },
+    sheet: { backgroundColor: '#fff', borderRadius: 28, paddingHorizontal: 18, paddingTop: 20, paddingBottom: 18, maxHeight: '88%', ...Shadow.lg },
+    sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+    sheetTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary, flex: 1, lineHeight: 20, marginBottom: 2 },
+    sheetSub: { fontSize: 11, color: Colors.onSurfaceVariant, lineHeight: 16 },
+    closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
+    sheetBody: { paddingBottom: 6 },
     fieldLabel: { fontSize: 10, fontWeight: '700', color: Colors.primary, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8, marginTop: 12 },
     input: { backgroundColor: Colors.surfaceContainerLow, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, fontSize: 13, color: Colors.onSurface },
     catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: Colors.surfaceContainerLow, borderWidth: 1, borderColor: Colors.outlineVariant, marginRight: 7 },
@@ -916,6 +1015,15 @@ const mStyles = StyleSheet.create({
     contactBtnText: { fontSize: 11, fontWeight: '600', color: Colors.primary },
     officerCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.surfaceContainerLow, borderRadius: 14, padding: 12, marginBottom: 14 },
     officerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primaryFixed, alignItems: 'center', justifyContent: 'center' },
+    selectBox: {
+        backgroundColor: Colors.surfaceContainerLow,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: Colors.outlineVariant,
+        overflow: 'hidden',
+        marginBottom: 10,
+    },
+    picker: { width: '100%', color: Colors.onSurface },
     hearingCard: { backgroundColor: Colors.surfaceContainerLow, borderRadius: 16, padding: 14, marginBottom: 10 },
     liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
     liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },

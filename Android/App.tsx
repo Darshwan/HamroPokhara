@@ -69,15 +69,6 @@ const CORE_SERVICES = [
   },
 ];
 
-const CITY_TOOLS = [
-  { id: 'ai', icon: 'smart-toy', title: 'AI Assistant', titleNE: 'AI सहायक', tone: '#6750A4', bg: '#F3EEFF' },
-  { id: 'grievance', icon: 'report-problem', title: 'Report 311', titleNE: '३११ गुनासो', tone: '#B3261E', bg: '#FFEDEA' },
-  { id: 'hearing', icon: 'how-to-vote', title: 'Public Hearing', titleNE: 'सार्वजनिक सुनुवाइ', tone: '#0057B8', bg: '#E8F0FE' },
-  { id: 'tax', icon: 'payments', title: 'Tax & Fines', titleNE: 'कर र जरिवाना', tone: '#1D6B34', bg: '#E8F5E9' },
-  { id: 'tourism', icon: 'landscape', title: 'Tourism Guide', titleNE: 'पर्यटन गाइड', tone: '#00695C', bg: '#E0F2F1' },
-  { id: 'feedback', icon: 'star', title: 'Rate Officer', titleNE: 'अधिकारी मूल्यांकन', tone: '#F57F17', bg: '#FFFDE7' },
-];
-
 function ServicesScreen({ navigation }: any) {
   const { language } = useStore();
   const [mode, setMode] = useState<'services' | 'tools'>('services');
@@ -117,8 +108,8 @@ function ServicesScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={servicesStyles.content}>
-        {mode === 'services' ? (
+      {mode === 'services' ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={servicesStyles.content}>
           <View style={servicesStyles.section}>
             <Text style={servicesStyles.sectionTitle}>{lang === 'ne' ? 'द्रुत पहुँच' : 'Quick access'}</Text>
             <View style={servicesStyles.serviceList}>
@@ -141,31 +132,10 @@ function ServicesScreen({ navigation }: any) {
               ))}
             </View>
           </View>
-        ) : (
-          <View style={servicesStyles.section}>
-            <Text style={servicesStyles.sectionTitle}>{lang === 'ne' ? 'नगर उपकरण' : 'City tools'}</Text>
-            <View style={servicesStyles.toolsGrid}>
-              {CITY_TOOLS.map((tile) => (
-                <TouchableOpacity
-                  key={tile.id}
-                  style={[servicesStyles.toolCard, { backgroundColor: tile.bg }]}
-                  onPress={() => {
-                    if (tile.id === 'ai') {
-                      navigation.navigate('AiAssistant');
-                    }
-                  }}
-                  activeOpacity={0.9}
-                >
-                  <View style={[servicesStyles.toolIcon, { backgroundColor: `${tile.tone}20` }]}>
-                    <MaterialIcons name={tile.icon as any} size={20} color={tile.tone} />
-                  </View>
-                  <Text style={[servicesStyles.toolTitle, { color: tile.tone }]}>{lang === 'ne' ? tile.titleNE : tile.title}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-      </ScrollView>
+        </ScrollView>
+      ) : (
+        <FeaturesScreen navigation={navigation} embedded />
+      )}
     </SafeAreaView>
   );
 }
