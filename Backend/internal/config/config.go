@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -24,8 +25,18 @@ func Load() *Config {
 		log.Println("No .env file — using system environment")
 	}
 
+	databaseURL := firstSet(
+		"DATABASE_URL",
+		"DATABASE_PRIVATE_URL",
+		"POSTGRES_URL",
+		"POSTGRESQL_URL",
+	)
+	if databaseURL == "" {
+		log.Fatalf("Required database connection variable is not set (tried DATABASE_URL, DATABASE_PRIVATE_URL, POSTGRES_URL, POSTGRESQL_URL)")
+	}
+
 	cfg := &Config{
-		DatabaseURL: mustGet("DATABASE_URL"),
+		DatabaseURL: databaseURL,
 		Port:        getOrDefault("PORT", "8080"),
 		JWTSecret:   mustGet("JWT_SECRET"),
 		CORSOrigins: getOrDefault("CORS_ALLOW_ORIGINS", "*"),
@@ -38,7 +49,7 @@ func Load() *Config {
 }
 
 func mustGet(key string) string {
-	val := os.Getenv(key)
+	val := strings.TrimSpace(os.Getenv(key))
 	if val == "" {
 		log.Fatalf("Required environment variable %s is not set", key)
 	}
@@ -46,8 +57,17 @@ func mustGet(key string) string {
 }
 
 func getOrDefault(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
+	if val := strings.TrimSpace(os.Getenv(key)); val != "" {
 		return val
 	}
 	return defaultVal
+}
+
+func firstSet(keys ...string) string {
+	for _, key := range keys {
+		if val := strings.TrimSpace(os.Getenv(key)); val != "" {
+			return val
+		}
+	}
+	return ""
 }

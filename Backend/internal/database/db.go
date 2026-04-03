@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,7 +16,23 @@ type DB struct {
 }
 
 func Connect(databaseURL string) (*DB, error) {
-	cfg, err := pgxpool.ParseConfig(databaseURL)
+	cleanURL := strings.TrimSpace(databaseURL)
+	if cleanURL == "" {
+		return nil, fmt.Errorf("database url is empty")
+	}
+
+	if parsed, err := url.Parse(cleanURL); err == nil {
+		host := parsed.Hostname()
+		dbName := strings.TrimPrefix(parsed.Path, "/")
+		if host == "" {
+			return nil, fmt.Errorf("invalid database url: host is missing (set Railway DATABASE_URL/DATABASE_PRIVATE_URL correctly)")
+		}
+		log.Printf("DB connecting host=%s db=%s sslmode=%s", host, dbName, parsed.Query().Get("sslmode"))
+	} else {
+		return nil, fmt.Errorf("parse database url: %w", err)
+	}
+
+	cfg, err := pgxpool.ParseConfig(cleanURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse db url: %w", err)
 	}
