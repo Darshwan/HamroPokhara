@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard, ActivityIndicator, Animated,
+  ScrollView, SafeAreaView, TextInput, RefreshControl, Image, ImageBackground, Modal, Keyboard, ActivityIndicator, Animated, ImageSourcePropType,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -82,7 +82,7 @@ const SERVICES = [
   { icon: 'receipt-long', label: 'Pay Tax', labelNE: 'कर तिर्नुहोस्', screen: 'Request' },
   { icon: 'water-drop', label: 'Water Bill', labelNE: 'पानीको बिल', screen: 'Request' },
   { icon: 'bolt', label: 'NEA Pay', labelNE: 'नेपाल विद्युत्', screen: 'Request' },
-  { icon: 'description', label: 'Sifarish', labelNE: 'सिफारिस', screen: 'Request' },
+  { icon: 'description', label: 'Sifaris', labelNE: 'सिफारिस', screen: 'Sifaris' },
 ];
 
 const TOURIST_SERVICES = [
@@ -101,17 +101,18 @@ const TOURIST_MENU = [
 
 const CITIZEN_MENU = [
   { icon: 'assignment', label: 'Ward Services', labelNE: 'वडा सेवा', screen: 'Request' },
+  { icon: 'description', label: 'Sifaris', labelNE: 'सिफारिस', screen: 'Sifaris' },
   { icon: 'qr-code', label: 'Digital Card', labelNE: 'डिजिटल कार्ड', screen: 'Verify' },
   { icon: 'history', label: 'My Requests', labelNE: 'मेरो अनुरोधहरू', screen: 'Track' },
   { icon: 'smart-toy', label: 'AI Assistant', labelNE: 'AI सहायक', screen: 'AiAssistant' },
 ];
 
-const NOTICE_STORY_IMAGES = [
-  'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1513279922550-3f2a4dff1d6a?auto=format&fit=crop&w=900&q=80',
+const NOTICE_STORY_IMAGES: ImageSourcePropType[] = [
+  { uri: 'https://assets-cdn.kathmandupost.com/uploads/source/news/2022/third-party/StreetfestivalREBANPokhara-1672156002.jpg' },
+  { uri: 'https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2b/21/c2/eb/caption.jpg?w=500&h=400&s=1' },
+  { uri: 'https://media.edusanjal.com/__sized__/news_headers/Digital_Gov_Hackathon_ICT_Bootcamp_Program_Pokhara_Metropolitan_City-thumbnail-1000x525-70.jpg' },
+  { uri: 'https://images.unsplash.com/photo-1581092160607-ee22731c2b96?auto=format&fit=crop&w=900&q=80' },
+  { uri: 'https://d8iqbmvu05s9c.cloudfront.net/aiqpo1f3jbzpd0silc6b0qqot9ao' },
 ];
 
 // Digital Newspaper Section hero image
@@ -156,6 +157,7 @@ const DEMO_NEWS = [
     is_urgent: true,
     published_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
     ward_no: 9,
+    image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80',
   },
   {
     notice_id: 'demo-4',
@@ -206,6 +208,14 @@ type SearchResult = {
   icon: string;
   screen: string;
   keywords: string[];
+};
+
+type StoryCard = {
+  title: string;
+  wardLabel: string;
+  time: string;
+  image: ImageSourcePropType;
+  summary: string;
 };
 
 type MenuItem = {
@@ -265,7 +275,7 @@ export default function HomeScreen({ navigation }: any) {
   const [forecastDays, setForecastDays] = useState<ForecastDay[]>([]);
   const [notices, setNotices] = useState<NoticeFeedItem[]>([]);
   const [noticesLoading, setNoticesLoading] = useState(false);
-  const [selectedStory, setSelectedStory] = useState<any>(null);
+  const [selectedStory, setSelectedStory] = useState<StoryCard | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -438,7 +448,7 @@ export default function HomeScreen({ navigation }: any) {
     return `${isNepali ? 'वडा' : 'Ward'} ${wardNo.padStart(2, '0')}`;
   };
 
-  const storyCards = useMemo(() => {
+  const storyCards = useMemo<StoryCard[]>(() => {
     return notices.slice(0, 5).map((notice, index) => ({
       title: isNepali ? (notice.title_ne || notice.title || 'सूचना') : (notice.title || notice.title_ne || 'Notice'),
       wardLabel: getNoticeWardLabel(notice),
@@ -689,7 +699,7 @@ export default function HomeScreen({ navigation }: any) {
                     style={styles.storyCard}
                     onPress={() => setSelectedStory(story)}
                   >
-                    <ImageBackground source={{ uri: story.image }} style={styles.storyImage} imageStyle={styles.storyImageClip}>
+                    <ImageBackground source={story.image} style={styles.storyImage} imageStyle={styles.storyImageClip}>
                       <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']} style={styles.storyImageOverlay} />
                       <View style={styles.storyTopRow}>
                         <View style={styles.storyBadge}>
@@ -1021,7 +1031,7 @@ export default function HomeScreen({ navigation }: any) {
 
           <View style={styles.storyModalCard}>
             <View style={styles.storyModalMediaWrap}>
-              <ImageBackground source={{ uri: selectedStory?.image }} style={styles.storyModalImage} imageStyle={styles.storyModalImageClip}>
+              <ImageBackground source={selectedStory?.image} style={styles.storyModalImage} imageStyle={styles.storyModalImageClip}>
                 <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.55)']} style={StyleSheet.absoluteFill} />
                 <View style={styles.storyModalHeader}>
                   <View style={styles.storyModalTagPill}>

@@ -2,7 +2,13 @@ import Constants from 'expo-constants';
 
 type AssistantLanguage = 'ne' | 'en';
 
-const GEMINI_MODEL = 'gemini-1.5-flash';
+export type GeminiAssistantResponse = {
+  answer: string;
+  missingKey: boolean;
+  rateLimited: boolean;
+};
+
+const DEFAULT_GEMINI_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-1.5-flash'];
 
 const getGeminiKey = () => {
   const extra = (Constants.expoConfig?.extra || {}) as Record<string, unknown>;
@@ -11,6 +17,17 @@ const getGeminiKey = () => {
 
   const env = (globalThis as any)?.process?.env ?? {};
   return String(env.EXPO_PUBLIC_GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
+};
+
+const getGeminiModelCandidates = () => {
+  const extra = (Constants.expoConfig?.extra || {}) as Record<string, unknown>;
+  const fromExtra = String(extra.geminiModel || '').trim();
+  const env = (globalThis as any)?.process?.env ?? {};
+  const fromEnv = String(env.EXPO_PUBLIC_GEMINI_MODEL || env.GEMINI_MODEL || '').trim();
+
+  const configured = [fromExtra, fromEnv].filter(Boolean);
+  const merged = [...configured, ...DEFAULT_GEMINI_MODEL_CANDIDATES];
+  return merged.filter((model, index, arr) => arr.indexOf(model) === index);
 };
 
 const cleanText = (raw: string) =>
@@ -27,11 +44,11 @@ export const askGeminiGovernmentAssistant = async (params: {
   query: string;
   language: AssistantLanguage;
   context?: string;
-}): Promise<{ answer: string; missingKey: boolean }> => {
+}): Promise<GeminiAssistantResponse> => {
   const apiKey = getGeminiKey();
   if (!apiKey) {
     logGeminiStatus('Gemini API key missing. Falling back to template response.');
-    return { answer: '', missingKey: true };
+    return { answer: '', missingKey: true, rateLimited: false };
   }
 
   logGeminiStatus('Gemini API key found. Sending request.');
@@ -52,36 +69,63 @@ export const askGeminiGovernmentAssistant = async (params: {
     `Question: ${params.query}`,
   ].join('\n');
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          topP: 0.95,
-          maxOutputTokens: 900,
-        },
-      }),
-    }
-  );
+  const modelCandidates = getGeminiModelCandidates();
+  let data: any = null;
+  let lastStatus = 0;
+  let lastBody = '';
 
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    logGeminiStatus(`Gemini request failed with status ${response.status}. Body: ${errorBody || '[empty]'}`);
-    throw new Error(`Gemini request failed with status ${response.status}`);
+  try {
+    for (const model of modelCandidates) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: prompt }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              topP: 0.95,
+              maxOutputTokens: 900,
+            },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        data = await response.json();
+        logGeminiStatus(`Gemini request succeeded with model ${model}.`);
+        break;
+      }
+
+      lastStatus = response.status;
+      lastBody = await response.text().catch(() => '');
+      logGeminiStatus(`Model ${model} failed with status ${response.status}.`);
+
+      if (response.status !== 404) {
+        break;
+      }
+    }
+  } catch (error) {
+    logGeminiStatus(`Gemini request failed before receiving a response: ${String(error)}`);
   }
 
-  const data = await response.json();
+  if (!data) {
+    logGeminiStatus(`Gemini request failed with status ${lastStatus}. Body: ${lastBody || '[empty]'}`);
+    return {
+      answer: '',
+      missingKey: false,
+      rateLimited: lastStatus === 429,
+    };
+  }
+
   const text =
     data?.candidates?.[0]?.content?.parts
       ?.map((part: any) => String(part?.text || ''))
@@ -90,5 +134,6 @@ export const askGeminiGovernmentAssistant = async (params: {
   return {
     answer: cleanText(text),
     missingKey: false,
+    rateLimited: false,
   };
 };

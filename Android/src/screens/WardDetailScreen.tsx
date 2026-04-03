@@ -8,6 +8,9 @@ import { useStore } from '../store/useStore';
 export default function WardDetailScreen({ navigation, route }: any) {
   const ward = route?.params?.ward;
   const { language, setLanguage } = useStore();
+  const wardCode = ward?.wardCode ?? `PKR-${String(ward?.wardNo ?? '').padStart(2, '0')}`;
+  const wardHead = ward?.wardChairman ?? ward?.wardHead;
+  const wardOfficer = ward?.wardOfficer;
 
   if (!ward) {
     return (
@@ -47,40 +50,46 @@ export default function WardDetailScreen({ navigation, route }: any) {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
-          <Text style={styles.heroCode}>{ward.wardCode}</Text>
+          <Text style={styles.heroCode}>{wardCode}</Text>
           <Text style={styles.heroTitle}>Ward Contact Directory</Text>
           <Text style={styles.heroSubtitle}>Direct points of contact for administrative support in this ward.</Text>
+          {!!ward?.population && (
+            <Text style={styles.heroMeta}>Population: {ward.population}</Text>
+          )}
+          {!!ward?.sourceLabel && (
+            <Text style={styles.heroMeta}>Source: {ward.sourceLabel}</Text>
+          )}
         </View>
 
         <View style={styles.contactCard}>
           <View style={styles.contactTitleRow}>
             <MaterialIcons name="workspace-premium" size={18} color={Colors.primary} />
-            <Text style={styles.contactTitle}>Ward Head</Text>
+            <Text style={styles.contactTitle}>Ward Chairperson</Text>
           </View>
-          <Text style={styles.personName}>{ward.wardHead.name}</Text>
+          <Text style={styles.personName}>{wardHead?.name ?? 'Not specified on site'}</Text>
           <View style={styles.infoRow}>
             <MaterialIcons name="call" size={16} color={Colors.primary} />
-            <Text style={styles.infoText}>{ward.wardHead.phone}</Text>
+            <Text style={styles.infoText}>{wardHead?.phone ?? 'Not specified on site'}</Text>
           </View>
           <View style={styles.infoRow}>
             <MaterialIcons name="mail" size={16} color={Colors.primary} />
-            <Text style={styles.infoText}>{ward.wardHead.email}</Text>
+            <Text style={styles.infoText}>{wardHead?.email ?? 'Not specified on site'}</Text>
           </View>
         </View>
 
         <View style={styles.contactCard}>
           <View style={styles.contactTitleRow}>
             <MaterialIcons name="badge" size={18} color={Colors.primary} />
-            <Text style={styles.contactTitle}>Ward Officer</Text>
+            <Text style={styles.contactTitle}>Ward Office</Text>
           </View>
-          <Text style={styles.personName}>{ward.wardOfficer.name}</Text>
+          <Text style={styles.personName}>{wardOfficer?.name ?? 'Not specified on site'}</Text>
           <View style={styles.infoRow}>
             <MaterialIcons name="call" size={16} color={Colors.primary} />
-            <Text style={styles.infoText}>{ward.wardOfficer.phone}</Text>
+            <Text style={styles.infoText}>{wardOfficer?.phone ?? ward?.officePhone ?? 'Not specified on site'}</Text>
           </View>
           <View style={styles.infoRow}>
             <MaterialIcons name="mail" size={16} color={Colors.primary} />
-            <Text style={styles.infoText}>{ward.wardOfficer.email}</Text>
+            <Text style={styles.infoText}>{wardOfficer?.email ?? 'Not specified on site'}</Text>
           </View>
         </View>
 
@@ -117,6 +126,7 @@ const styles = StyleSheet.create({
   heroCode: { fontSize: 12, color: Colors.onPrimaryFixedVariant, fontWeight: '700' },
   heroTitle: { marginTop: 6, fontSize: 20, fontWeight: '900', color: Colors.primary },
   heroSubtitle: { marginTop: 4, fontSize: 12, lineHeight: 18, color: Colors.onSurfaceVariant },
+  heroMeta: { marginTop: 6, fontSize: 11, color: Colors.onSurfaceVariant },
   contactCard: {
     backgroundColor: Colors.surfaceContainerLowest,
     borderWidth: 1,

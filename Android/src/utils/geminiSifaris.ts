@@ -25,7 +25,7 @@ export type PurposeAssistResult = {
   extraDetailSuggestions: string[];
 };
 
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const DEFAULT_GEMINI_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-1.5-flash'];
 
 const getGeminiKey = () => {
   const extra = (Constants.expoConfig?.extra || {}) as Record<string, unknown>;
@@ -34,6 +34,62 @@ const getGeminiKey = () => {
 
   const env = (globalThis as any)?.process?.env ?? {};
   return String(env.EXPO_PUBLIC_GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
+};
+
+const getGeminiModelCandidates = () => {
+  const extra = (Constants.expoConfig?.extra || {}) as Record<string, unknown>;
+  const fromExtra = String(extra.geminiModel || '').trim();
+  const env = (globalThis as any)?.process?.env ?? {};
+  const fromEnv = String(env.EXPO_PUBLIC_GEMINI_MODEL || env.GEMINI_MODEL || '').trim();
+
+  const configured = [fromExtra, fromEnv].filter(Boolean);
+  const merged = [...configured, ...DEFAULT_GEMINI_MODEL_CANDIDATES];
+  return merged.filter((model, index, arr) => arr.indexOf(model) === index);
+};
+
+const geminiGenerate = async (params: {
+  apiKey: string;
+  prompt: string;
+  maxOutputTokens: number;
+  responseMimeType?: string;
+}) => {
+  const modelCandidates = getGeminiModelCandidates();
+
+  for (const model of modelCandidates) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(params.apiKey)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: params.prompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            topP: 0.95,
+            maxOutputTokens: params.maxOutputTokens,
+            ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
+          },
+        }),
+      }
+    );
+
+    if (response.ok) {
+      return response.json();
+    }
+
+    if (response.status !== 404) {
+      return null;
+    }
+  }
+
+  return null;
 };
 
 const cleanJsonText = (value: string) => {
@@ -172,35 +228,17 @@ export const generateNepaliSifarisDraft = async (input: SifarisDraftInput): Prom
     `अतिरिक्त विवरण: ${input.extraNotes || 'उल्लेख छैन'}`,
   ].join('\n');
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          topP: 0.95,
-          maxOutputTokens: 1200,
-          responseMimeType: 'application/json',
-        },
-      }),
-    }
-  );
+  const data = await geminiGenerate({
+    apiKey,
+    prompt,
+    maxOutputTokens: 1200,
+    responseMimeType: 'application/json',
+  });
 
-  if (!response.ok) {
+  if (!data) {
     return fallback;
   }
 
-  const data = await response.json();
   const text = data?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') || '';
   if (!text.trim()) {
     return fallback;
@@ -238,35 +276,17 @@ export const enhancePurposeAndSuggestDetails = async (params: {
     `Roman Nepali उद्देश्य: ${params.romanPurpose}`,
   ].join('\n');
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          topP: 0.95,
-          maxOutputTokens: 700,
-          responseMimeType: 'application/json',
-        },
-      }),
-    }
-  );
+  const data = await geminiGenerate({
+    apiKey,
+    prompt,
+    maxOutputTokens: 700,
+    responseMimeType: 'application/json',
+  });
 
-  if (!response.ok) {
+  if (!data) {
     return fallback;
   }
 
-  const data = await response.json();
   const text = data?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') || '';
   if (!text.trim()) {
     return fallback;

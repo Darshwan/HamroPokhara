@@ -11,6 +11,10 @@ RUN apk add --no-cache ca-certificates
 RUN adduser -D appuser
 WORKDIR /app
 COPY --from=builder /app/pratibimba .
+COPY --from=builder /app/assets ./assets
+RUN mkdir -p /app/generated_pdfs && chown -R appuser:appuser /app
+ENV FONT_DIR=/app/assets/fonts
+ENV GENERATED_PDF_DIR=/app/generated_pdfs
 USER appuser
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s \

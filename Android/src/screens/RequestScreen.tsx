@@ -377,7 +377,6 @@ export default function RequestScreen({ navigation }: any) {
                       <Text style={styles.popularTitle}>{item.label}</Text>
                       <Text style={styles.popularSub}>Official municipal form</Text>
                     </View>
-                    <MaterialIcons name="chevron-right" size={18} color={Colors.outline} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -726,28 +725,28 @@ const styles = StyleSheet.create({
   },
   categoryChipText: { fontSize: 12, color: Colors.primary, fontWeight: '700' },
   categoryChipTextActive: { color: '#fff' },
-  popularGrid: { gap: 10, marginBottom: 14 },
+  popularGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
   popularCard: {
+    width: '48.5%',
+    minHeight: 156,
     backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.surfaceContainerHigh,
     padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainer,
     ...Shadow.sm,
   },
   popularIconWrap: {
-    width: 34,
-    height: 34,
+    width: 42,
+    height: 42,
     borderRadius: Radius.lg,
     backgroundColor: Colors.primaryFixed,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  popularTitle: { fontSize: 13, fontWeight: '800', color: Colors.primary },
-  popularSub: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2 },
+  popularTitle: { fontSize: 12, fontWeight: '800', color: Colors.primary, lineHeight: 16 },
+  popularSub: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 8, lineHeight: 16 },
   billCard: {
     backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: Radius.xl,

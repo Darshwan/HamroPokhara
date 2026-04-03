@@ -13,8 +13,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Radius, Shadow, Typography } from '../constants/theme';
+import { Colors, Radius, Shadow } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { aiAPI } from '../api/client';
 import AppHeader from '../components/AppHeader';
@@ -28,6 +27,7 @@ interface ChatMessage {
   role: 'assistant' | 'user';
   text: string;
   source?: AssistantSource;
+  followUps?: string[];
 }
 
 const QUICK_SUGGESTIONS: Array<{
@@ -122,23 +122,58 @@ const buildTemplateAnswer = (query: string, language: LanguageMode) => {
   return TEMPLATE_RESPONSES[key][language] || TEMPLATE_RESPONSES.fallback[language];
 };
 
+const buildFollowUps = (query: string, language: LanguageMode) => {
+  const key = detectTemplateKey(query);
+  const followUps: Record<string, Record<LanguageMode, string[]>> = {
+    building_permit: {
+      ne: ['कागजातको सूची देखाउनुहोस्', 'कति समय लाग्छ?', 'कहाँ बुझाउने?'],
+      en: ['Show document checklist', 'How long does it take?', 'Where should I submit it?'],
+    },
+    citizenship_recommendation: {
+      ne: ['आवश्यक फाइलहरू बताउनुहोस्', 'वडाबाट कसरी लिने?', 'फर्म भर्ने तरिका?'],
+      en: ['List required files', 'How do I get it from the ward?', 'How do I fill the form?'],
+    },
+    sifaris: {
+      ne: ['सिफारिसको नमुना दिनुहोस्', 'फीस छ कि छैन?', 'आजै लिन मिल्छ?'],
+      en: ['Show a sample sifaris', 'Is there a fee?', 'Can I get it today?'],
+    },
+    tax_clearance: {
+      ne: ['कर तिर्ने चरणहरू', 'कुन कागज चाहिन्छ?', 'अनलाइन गर्न मिल्छ?'],
+      en: ['Tax payment steps', 'What documents are needed?', 'Can I do it online?'],
+    },
+    tourist_help: {
+      ne: ['पर्यटक permit चाहिन्छ?', 'घुम्न कहाँ जाने?', 'आपतकालीन सम्पर्क?'],
+      en: ['Do tourists need permits?', 'Where should I visit?', 'Emergency contacts?'],
+    },
+    fallback: {
+      ne: ['वडा नम्बर खोज्नुहोस्', 'आवश्यक कागजात बताउनुहोस्', 'फेरि सरल भाषामा सोध्छु'],
+      en: ['Find my ward number', 'Tell me the required documents', 'I will ask again in simpler words'],
+    },
+  };
+
+  return followUps[key][language] || followUps.fallback[language];
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default function GovernmentAssistantScreen({ navigation }: any) {
   const { citizen, tourist, isTourist, language, setLanguage } = useStore();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      text:
-        language === 'ne'
-          ? 'नमस्ते। म पोखरा महानगरपालिकाको सरकारी सहायक हुँ। कृपया आफ्नो प्रश्न सोध्नुहोस्, म अत्यन्त औपचारिक रूपमा सहयोग गर्नेछु।'
-          : 'Greetings. I am the official Government Assistant of Pokhara Metropolitan City. Please ask your question, and I will respond in a highly formal manner.',
-      source: 'gemini',
-    },
-  ]);
+  const createWelcomeMessage = (lang: LanguageMode): ChatMessage => ({
+    id: 'welcome',
+    role: 'assistant',
+    text:
+      lang === 'ne'
+        ? 'नमस्ते। म पोखरा महानगरपालिकाको सरकारी सहायक हुँ। सेवा, कागजात, कर, अनुमति, वा प्रक्रिया सम्बन्धी प्रश्न सोध्नुहोस्।'
+        : 'Hello. I am the Government Assistant for Pokhara Metropolitan City. Ask about services, documents, taxes, permits, or municipal processes.',
+    source: 'gemini',
+  });
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [createWelcomeMessage(language as LanguageMode)]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [selectedLang, setSelectedLang] = useState<LanguageMode>(language as LanguageMode);
   const chatScrollRef = useRef<ScrollView | null>(null);
+  const typingTimersRef = useRef<ReturnType<typeof setInterval>[]>([]);
 
   const userContext = useMemo(() => {
     if (isTourist && tourist) {
@@ -150,10 +185,6 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
     return 'guest';
   }, [citizen, isTourist, tourist]);
 
-  const assistantIntro = selectedLang === 'ne'
-    ? 'कुनै पनि सरकारी सेवा सम्बन्धी प्रश्न सोध्नुहोस्। उत्तर अत्यन्त औपचारिक र स्पष्ट रूपमा प्रदान गरिनेछ।'
-    : 'Ask any government-service question. Responses are provided in a highly formal and clear format.';
-
   useEffect(() => {
     const timer = setTimeout(() => {
       chatScrollRef.current?.scrollToEnd({ animated: true });
@@ -161,10 +192,30 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
     return () => clearTimeout(timer);
   }, [messages, sending]);
 
+  useEffect(() => {
+    return () => {
+      typingTimersRef.current.forEach((timer) => clearInterval(timer));
+      typingTimersRef.current = [];
+    };
+  }, []);
+
   const syncLanguage = (lang: LanguageMode) => {
     setSelectedLang(lang);
     setLanguage(lang);
   };
+
+  useEffect(() => {
+    setSelectedLang(language as LanguageMode);
+  }, [language]);
+
+  useEffect(() => {
+    setMessages((current) => {
+      if (current.length === 1 && current[0]?.id === 'welcome') {
+        return [createWelcomeMessage(selectedLang)];
+      }
+      return current;
+    });
+  }, [selectedLang]);
 
   const logQuery = async (payload: {
     query: string;
@@ -183,6 +234,35 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
     } catch {
       // Logging should never block the chat flow.
     }
+  };
+
+  const animateAssistantReply = async (messageId: string, text: string) => {
+    const tokens = Array.from(text);
+    const step = Math.max(1, Math.ceil(tokens.length / 90));
+    let index = 0;
+
+    setMessages((current) => current.map((message) => (
+      message.id === messageId ? { ...message, text: '' } : message
+    )));
+
+    await new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        index = Math.min(tokens.length, index + step);
+        const nextText = tokens.slice(0, index).join('');
+
+        setMessages((current) => current.map((message) => (
+          message.id === messageId ? { ...message, text: nextText } : message
+        )));
+
+        if (index >= tokens.length) {
+          clearInterval(timer);
+          typingTimersRef.current = typingTimersRef.current.filter((item) => item !== timer);
+          resolve();
+        }
+      }, 14);
+
+      typingTimersRef.current.push(timer);
+    });
   };
 
   const sendToAssistant = async (query: string) => {
@@ -227,32 +307,54 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
         });
       }
 
+      if (response.rateLimited) {
+        Toast.show({
+          type: 'info',
+          text1: selectedLang === 'ne' ? 'AI सेवा अस्थायी रूपमा सीमित छ' : 'AI service is temporarily limited',
+          text2:
+            selectedLang === 'ne'
+              ? 'स्थानीय template उत्तर देखाइँदैछ। केही समयपछि पुन: प्रयास गर्नुहोस्।'
+              : 'A local template answer is shown for now. Please try again in a bit.',
+        });
+      }
+
       const apiAnswer = String(response.answer || '').trim();
       const answer = apiAnswer || buildTemplateAnswer(trimmed, selectedLang);
       const resolvedSource: AssistantSource = apiAnswer ? 'gemini' : 'template';
+      const followUps = buildFollowUps(trimmed, selectedLang);
+      const assistantId = `${Date.now()}-assistant`;
 
       setMessages((current) => [
         ...current,
         {
-          id: `${Date.now()}-assistant`,
+          id: assistantId,
           role: 'assistant',
-          text: answer,
+          text: '',
           source: resolvedSource,
+          followUps,
         },
       ]);
+
+      await wait(120);
+      await animateAssistantReply(assistantId, answer);
 
       await logQuery({ query: trimmed, answer, source: resolvedSource });
     } catch {
       const answer = buildTemplateAnswer(trimmed, selectedLang);
+      const followUps = buildFollowUps(trimmed, selectedLang);
+      const assistantId = `${Date.now()}-assistant-offline`;
       setMessages((current) => [
         ...current,
         {
-          id: `${Date.now()}-assistant-offline`,
+          id: assistantId,
           role: 'assistant',
-          text: answer,
+          text: '',
           source: 'offline',
+          followUps,
         },
       ]);
+      await wait(120);
+      await animateAssistantReply(assistantId, answer);
       await logQuery({ query: trimmed, answer, source: 'offline' });
     } finally {
       setSending(false);
@@ -260,6 +362,11 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
   };
 
   const quickPromptLabel = (item: (typeof QUICK_SUGGESTIONS)[number]) => (selectedLang === 'ne' ? item.ne : item.en);
+
+  const resetChat = () => {
+    setMessages([createWelcomeMessage(selectedLang)]);
+    setInput('');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -273,142 +380,152 @@ export default function GovernmentAssistantScreen({ navigation }: any) {
       />
 
       <KeyboardAvoidingView
-        style={styles.chatShell}
+        style={styles.keyboardShell}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <LinearGradient
-          colors={[Colors.primary, Colors.primaryContainer]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.header}
+        <ScrollView
+          style={styles.screenScroll}
+          contentContainerStyle={styles.screenScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.headerTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.kicker}>{selectedLang === 'ne' ? 'औपचारिक सरकारी मार्गदर्शन' : 'Formal Government Guidance'}</Text>
-              <Text style={styles.title}>{selectedLang === 'ne' ? 'सरकारी सहायक' : 'Government Assistant'}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.clearBtn}
-              onPress={() => setMessages((current) => current.slice(0, 1))}
-              disabled={sending || messages.length <= 1}
-            >
-              <MaterialIcons name="delete-outline" size={18} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.subtitle}>{assistantIntro}</Text>
-
-          <View style={styles.langRow}>
-            <TouchableOpacity
-              style={[styles.langPill, selectedLang === 'ne' && styles.langPillActive]}
-              onPress={() => syncLanguage('ne')}
-            >
-              <Text style={[styles.langPillText, selectedLang === 'ne' && styles.langPillTextActive]}>नेपाली</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langPill, selectedLang === 'en' && styles.langPillActive]}
-              onPress={() => syncLanguage('en')}
-            >
-              <Text style={[styles.langPillText, selectedLang === 'en' && styles.langPillTextActive]}>English</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.quickWrap}>
-          <Text style={styles.sectionTitle}>{selectedLang === 'ne' ? 'छिटो सुझाव' : 'Quick Suggestions'}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
-            {QUICK_SUGGESTIONS.map((item) => (
-              <TouchableOpacity
-                key={item.key}
-                style={styles.quickChip}
-                onPress={() => sendToAssistant(quickPromptLabel(item))}
-                disabled={sending}
-              >
-                <MaterialIcons name="help-outline" size={16} color={Colors.primary} />
-                <Text style={styles.quickChipText}>{quickPromptLabel(item)}</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>{selectedLang === 'ne' ? 'छिटो सुझाव' : 'Quick prompts'}</Text>
+                <Text style={styles.sectionSubtitle}>{selectedLang === 'ne' ? 'एक ट्यापमै सुरु गर्नुहोस्' : 'Start with one tap'}</Text>
+              </View>
+              <TouchableOpacity style={styles.resetBtn} onPress={resetChat} disabled={sending && messages.length <= 1}>
+                <MaterialIcons name="refresh" size={18} color={Colors.primary} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
+              {QUICK_SUGGESTIONS.map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.quickChip}
+                  onPress={() => sendToAssistant(quickPromptLabel(item))}
+                  disabled={sending}
+                >
+                  <MaterialIcons name="auto-awesome" size={14} color={Colors.primary} />
+                  <Text style={styles.quickChipText}>{quickPromptLabel(item)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
 
-        <View style={styles.chatCard}>
-          <ScrollView
-            ref={chatScrollRef}
-            style={styles.chatList}
-            contentContainerStyle={styles.chatListContent}
-            showsVerticalScrollIndicator={false}
-          >
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[
-                styles.bubbleRow,
-                message.role === 'user' ? styles.userRow : styles.assistantRow,
-              ]}
+          <View style={styles.chatCard}>
+            <View style={styles.chatHeader}>
+              <View>
+                <Text style={styles.chatHeaderTitle}>{selectedLang === 'ne' ? 'संवाद' : 'Conversation'}</Text>
+                <Text style={styles.chatHeaderSubtitle}>{selectedLang === 'ne' ? 'उत्तर तलको च्याटमा देखिन्छ' : 'Replies appear below in chat'}</Text>
+              </View>
+              <View style={styles.chatStatusPill}>
+                <View style={styles.statusDot} />
+                <Text style={styles.chatStatusText}>{sending ? (selectedLang === 'ne' ? 'पठाउँदै' : 'Sending') : (selectedLang === 'ne' ? 'तयार' : 'Ready')}</Text>
+              </View>
+            </View>
+
+            <ScrollView
+              ref={chatScrollRef}
+              style={styles.chatList}
+              contentContainerStyle={styles.chatListContent}
+              showsVerticalScrollIndicator={false}
             >
-              {message.role === 'assistant' && (
-                <View style={styles.avatar}>
-                  <MaterialIcons name="smart-toy" size={18} color={Colors.primary} />
+              {messages.map((message) => (
+                <View key={message.id} style={message.role === 'user' ? styles.userMessageBlock : styles.assistantMessageBlock}>
+                  <View
+                    style={[
+                      styles.bubbleRow,
+                      message.role === 'user' ? styles.userRow : styles.assistantRow,
+                    ]}
+                  >
+                    {message.role === 'assistant' && (
+                      <View style={styles.avatar}>
+                        <MaterialIcons name="smart-toy" size={17} color={Colors.primary} />
+                      </View>
+                    )}
+                    <View
+                      style={[
+                        styles.bubble,
+                        message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                      ]}
+                    >
+                      <Text style={[styles.bubbleText, message.role === 'user' && styles.userBubbleText]}>{message.text || (message.role === 'assistant' ? ' ' : '')}</Text>
+                      {message.source && message.role === 'assistant' && (
+                        <View style={styles.sourceBadge}>
+                          <Text style={styles.sourceText}>
+                            {message.source === 'gemini'
+                              ? (selectedLang === 'ne' ? 'Gemini उत्तर' : 'Gemini reply')
+                              : message.source === 'template'
+                                ? (selectedLang === 'ne' ? 'Template उत्तर' : 'Template reply')
+                                : (selectedLang === 'ne' ? 'Offline fallback' : 'Offline fallback')}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {message.role === 'assistant' && message.followUps?.length ? (
+                    <View style={styles.followUpWrap}>
+                      <Text style={styles.followUpLabel}>{selectedLang === 'ne' ? 'अर्को प्रश्न' : 'Follow-up questions'}</Text>
+                      <View style={styles.followUpRow}>
+                        {message.followUps.map((followUp) => (
+                          <TouchableOpacity
+                            key={followUp}
+                            style={styles.followUpChip}
+                            disabled={sending}
+                            onPress={() => sendToAssistant(followUp)}
+                          >
+                            <Text style={styles.followUpChipText}>{followUp}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+
+              {sending && (
+                <View style={[styles.bubbleRow, styles.assistantRow]}>
+                  <View style={styles.avatar}>
+                    <MaterialIcons name="smart-toy" size={17} color={Colors.primary} />
+                  </View>
+                  <View style={[styles.bubble, styles.assistantBubble, styles.loadingBubble]}>
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                    <Text style={styles.loadingText}>{selectedLang === 'ne' ? 'Gemini ले उत्तर तयार गर्दैछ...' : 'Gemini is preparing a reply...'}</Text>
+                  </View>
                 </View>
               )}
-              <View
-                style={[
-                  styles.bubble,
-                  message.role === 'user' ? styles.userBubble : styles.assistantBubble,
-                ]}
-              >
-                <Text style={[styles.bubbleText, message.role === 'user' && styles.userBubbleText]}>{message.text}</Text>
-                {message.source && message.role === 'assistant' && (
-                  <Text style={styles.sourceText}>
-                    {message.source === 'gemini'
-                      ? (selectedLang === 'ne' ? 'Gemini प्रत्यक्ष' : 'Gemini Live')
-                      : message.source === 'template'
-                        ? (selectedLang === 'ne' ? 'Template उत्तर' : 'Template answer')
-                        : (selectedLang === 'ne' ? 'Offline fallback' : 'Offline fallback')}
-                  </Text>
-                )}
-              </View>
-            </View>
-          ))}
+            </ScrollView>
 
-          {sending && (
-            <View style={[styles.bubbleRow, styles.assistantRow]}>
-              <View style={styles.avatar}>
-                <MaterialIcons name="smart-toy" size={18} color={Colors.primary} />
+            <View style={styles.composer}>
+              <View style={styles.inputCard}>
+                <TextInput
+                  style={styles.input}
+                  placeholder={selectedLang === 'ne' ? 'यहाँ प्रश्न लेख्नुहोस्...' : 'Type your question here...'}
+                  placeholderTextColor={Colors.outline}
+                  value={input}
+                  onChangeText={setInput}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+                  onPress={() => sendToAssistant(input)}
+                  disabled={sending || !input.trim()}
+                  activeOpacity={0.9}
+                >
+                  <MaterialIcons name="send" size={18} color="#fff" />
+                </TouchableOpacity>
               </View>
-              <View style={[styles.bubble, styles.assistantBubble, styles.loadingBubble]}>
-                <ActivityIndicator color={Colors.primary} size="small" />
-                <Text style={styles.loadingText}>{selectedLang === 'ne' ? 'सोच्दैछ...' : 'Thinking...'}</Text>
-              </View>
+              <Text style={styles.helperText}>
+                {selectedLang === 'ne'
+                  ? 'Gemini उपलब्ध नभए template उत्तर देखाइनेछ।'
+                  : 'If Gemini is unavailable, a template answer will be shown.'}
+              </Text>
             </View>
-          )}
-          </ScrollView>
-
-          <View style={styles.composer}>
-            <View style={styles.inputCard}>
-              <TextInput
-                style={styles.input}
-                placeholder={selectedLang === 'ne' ? 'यहाँ प्रश्न लेख्नुहोस्...' : 'Type your question here...'}
-                placeholderTextColor={Colors.outline}
-                value={input}
-                onChangeText={setInput}
-                multiline
-              />
-              <TouchableOpacity
-                style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
-                onPress={() => sendToAssistant(input)}
-                disabled={sending || !input.trim()}
-              >
-                <MaterialIcons name="send" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.helperText}>
-              {selectedLang === 'ne'
-                ? 'Gemini उपलब्ध नभए template उत्तर देखाइनेछ।'
-                : 'If Gemini is unavailable, a template answer will be shown.'}
-            </Text>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -419,85 +536,55 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 24,
+  keyboardShell: {
+    flex: 1,
+  },
+  screenScroll: {
+    flex: 1,
+  },
+  screenScrollContent: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    ...Shadow.sm,
+    paddingTop: 10,
+    paddingBottom: 18,
+    gap: 14,
   },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  kicker: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  title: {
-    ...Typography.h3,
-    color: '#fff',
-    marginTop: 4,
-  },
-  subtitle: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
-  },
-  clearBtn: {
+  resetBtn: {
     width: 38,
     height: 38,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: Colors.surfaceContainerLowest,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: Colors.outlineVariant,
   },
-  langRow: {
+  sectionCard: {
+    borderRadius: 24,
+    padding: 16,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    ...Shadow.sm,
+  },
+  sectionHeader: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-  langPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-  },
-  langPillActive: {
-    backgroundColor: '#fff',
-  },
-  langPillText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  langPillTextActive: {
-    color: Colors.primary,
-  },
-  quickWrap: {
-    paddingTop: 12,
-    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: Colors.onSurface,
-    marginBottom: 10,
+  },
+  sectionSubtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
   },
   quickRow: {
-    paddingRight: 20,
     gap: 10,
+    paddingRight: 6,
   },
   quickChip: {
     flexDirection: 'row',
@@ -511,32 +598,65 @@ const styles = StyleSheet.create({
     borderColor: Colors.outlineVariant,
   },
   quickChipText: {
+    maxWidth: 220,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.onSurface,
-  },
-  chatShell: {
-    flex: 1,
-    paddingTop: 10,
-    paddingBottom: 6,
   },
   chatCard: {
     flex: 1,
-    marginHorizontal: 16,
-    marginTop: 8,
+    borderRadius: 28,
+    padding: 14,
     backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: 22,
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
-    overflow: 'hidden',
+    ...Shadow.sm,
+    minHeight: 420,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  chatHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.onSurface,
+  },
+  chatHeaderSubtitle: {
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+    marginTop: 3,
+  },
+  chatStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: Colors.success,
+  },
+  chatStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
   },
   chatList: {
     flex: 1,
   },
   chatListContent: {
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 18,
+    paddingBottom: 14,
     gap: 10,
   },
   bubbleRow: {
@@ -546,9 +666,19 @@ const styles = StyleSheet.create({
   },
   userRow: {
     justifyContent: 'flex-end',
+    marginLeft: 28,
   },
   assistantRow: {
     justifyContent: 'flex-start',
+    marginRight: 28,
+  },
+  userMessageBlock: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  assistantMessageBlock: {
+    alignItems: 'flex-start',
+    gap: 8,
   },
   avatar: {
     width: 30,
@@ -559,7 +689,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bubble: {
-    maxWidth: '86%',
+    maxWidth: '88%',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -580,11 +710,18 @@ const styles = StyleSheet.create({
   userBubbleText: {
     color: '#fff',
   },
+  sourceBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceContainerLowest,
+  },
   sourceText: {
-    marginTop: 7,
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '800',
+    letterSpacing: 0.3,
     color: Colors.outline,
     textTransform: 'uppercase',
   },
@@ -598,13 +735,40 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceVariant,
     fontWeight: '600',
   },
-  composer: {
+  followUpWrap: {
+    paddingLeft: 40,
+    gap: 8,
+  },
+  followUpLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: Colors.outline,
+  },
+  followUpRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  followUpChip: {
     paddingHorizontal: 12,
-    paddingBottom: 12,
-    paddingTop: 6,
+    paddingVertical: 9,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  followUpChipText: {
+    fontSize: 12,
+    color: Colors.onSurface,
+    fontWeight: '600',
+  },
+  composer: {
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.outlineVariant,
-    backgroundColor: Colors.surfaceContainerLowest,
+    marginTop: 4,
   },
   inputCard: {
     flexDirection: 'row',
@@ -618,7 +782,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 46,
     maxHeight: 110,
     fontSize: 14,
     color: Colors.onSurface,
@@ -635,7 +799,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: {
-    opacity: 0.55,
+    opacity: 0.5,
   },
   helperText: {
     fontSize: 11,

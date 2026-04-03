@@ -17,18 +17,13 @@ const { width } = Dimensions.get('window');
 
 // Feature tile config
 const TILES = [
-    { id: 'ai', icon: 'smart-toy', label: 'AI Assistant', labelNE: 'AI सहायक', color: '#6750A4', bg: '#F3EEFF' },
     { id: 'grievance', icon: 'report-problem', label: 'Report 311', labelNE: '311 रिपोर्ट', color: '#B3261E', bg: '#FFEDEA' },
-    { id: 'hearing', icon: 'how-to-vote', label: 'Public Hearing', labelNE: 'सार्वजनिक सुनुवाई', color: '#0057B8', bg: '#E8F0FE' },
     { id: 'tax', icon: 'payments', label: 'Tax & Fines', labelNE: 'कर र जरिमाना', color: '#1D6B34', bg: '#E8F5E9' },
-    { id: 'krishi', icon: 'eco', label: 'Krishi Anudan', labelNE: 'कृषि अनुदान', color: '#2E7D32', bg: '#DCEDC8' },
     { id: 'bhatta', icon: 'elderly', label: 'Briddha Bhatta', labelNE: 'बृद्धभत्ता', color: '#0277BD', bg: '#E1F5FE' },
     { id: 'blood', icon: 'bloodtype', label: 'Blood Connect', labelNE: 'रक्त दान', color: '#C62828', bg: '#FFEBEE' },
-    { id: 'tourism', icon: 'landscape', label: 'Tourism Guide', labelNE: 'पर्यटन गाइड', color: '#00695C', bg: '#E0F2F1' },
     { id: 'lost', icon: 'search', label: 'Lost & Found', labelNE: 'हराएको/भेटिएको', color: '#E65100', bg: '#FFF3E0' },
     { id: 'volunteer', icon: 'volunteer-activism', label: 'Volunteer', labelNE: 'स्वयंसेवक', color: '#4527A0', bg: '#EDE7F6' },
     { id: 'digsig', icon: 'draw', label: 'Digital Sign', labelNE: 'डिजिटल हस्ताक्षर', color: '#37474F', bg: '#ECEFF1' },
-    { id: 'feedback', icon: 'star', label: 'Rate Officer', labelNE: 'अधिकारी मूल्यांकन', color: '#F57F17', bg: '#FFFDE7' },
 ];
 
 const WARD_OFFICER_ROSTER: Array<{
@@ -70,32 +65,43 @@ const WARD_OFFICER_ROSTER: Array<{
     { wardNo: '33', officers: [{ id: 'WO-33-01', name: 'Bishnu Aryal', title: 'Ward Officer' }, { id: 'WO-33-02', name: 'Mina Koirala', title: 'Assistant Officer' }] },
 ];
 
-export default function FeaturesScreen({ navigation, route, embedded = false }: any) {
+export default function FeaturesScreen({ navigation, route, embedded = false, launchOnly = false, onFeatureClose }: any) {
     const { citizen, tourist, language } = useStore();
     const [activeFeature, setActiveFeature] = useState<string | null>(null);
+    const [serviceCategory, setServiceCategory] = useState<string | null>(null);
     const lang = language;
 
     useEffect(() => {
         const openFeature = route?.params?.openFeature;
+        const category = route?.params?.serviceCategory;
         if (typeof openFeature === 'string' && openFeature) {
             setActiveFeature(openFeature);
         }
-    }, [route?.params?.openFeature]);
+        setServiceCategory(typeof category === 'string' ? category : null);
+    }, [route?.params?.openFeature, route?.params?.openFeatureToken]);
 
     const openFeature = (id: string) => setActiveFeature(id);
     const closeFeature = () => setActiveFeature(null);
 
+    const handleCloseFeature = () => {
+        closeFeature();
+        if (typeof onFeatureClose === 'function') {
+            onFeatureClose();
+        }
+    };
+
     const content = (
         <>
-            {!embedded && <AppHeader title={lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'} showMenu={false} showLang />}
-            {!embedded && (
+            {!embedded && !launchOnly && <AppHeader title={lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'} showMenu={false} showLang />}
+            {!embedded && !launchOnly && (
                 <View style={s.header}>
                     <Text style={s.headerTitle}>{lang === 'ne' ? 'नागरिक सेवाहरू' : 'Citizen Services'}</Text>
                     <Text style={s.headerSub}>{TILES.length} {lang === 'ne' ? 'सेवाहरू उपलब्ध' : 'services available'}</Text>
                 </View>
             )}
 
-            <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+            {!launchOnly && (
+              <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
                 <View style={s.grid}>
                     {TILES.map(tile => (
                         <TouchableOpacity
@@ -113,24 +119,28 @@ export default function FeaturesScreen({ navigation, route, embedded = false }: 
                         </TouchableOpacity>
                     ))}
                 </View>
-            </ScrollView>
+              </ScrollView>
+            )}
 
-            {activeFeature === 'ai' && <AIAssistantModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'grievance' && <GrievanceModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'hearing' && <HearingModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'blood' && <BloodModal onClose={closeFeature} lang={lang} />}
-            {activeFeature === 'lost' && <LostFoundModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'volunteer' && <VolunteerModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'feedback' && <FeedbackModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'krishi' && <KrishiModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'digsig' && <DigSigModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'bhatta' && <BhattaModal onClose={closeFeature} citizen={citizen} lang={lang} />}
-            {activeFeature === 'tourism' && <TourismModal onClose={closeFeature} lang={lang} />}
-            {activeFeature === 'tax' && <TaxModal onClose={closeFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'ai' && <AIAssistantModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'grievance' && <GrievanceModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'hearing' && <HearingModal onClose={handleCloseFeature} citizen={citizen} lang={lang} serviceCategory={serviceCategory} />}
+            {activeFeature === 'blood' && <BloodModal onClose={handleCloseFeature} lang={lang} />}
+            {activeFeature === 'lost' && <LostFoundModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'volunteer' && <VolunteerModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'feedback' && <FeedbackModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'krishi' && <KrishiModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'digsig' && <DigSigModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'bhatta' && <BhattaModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
+            {activeFeature === 'tourism' && <TourismModal onClose={handleCloseFeature} lang={lang} serviceCategory={serviceCategory} />}
+            {activeFeature === 'tax' && <TaxModal onClose={handleCloseFeature} citizen={citizen} lang={lang} />}
         </>
     );
 
     if (embedded) {
+        if (launchOnly) {
+            return <>{content}</>;
+        }
         return <View style={s.embeddedContainer}>{content}</View>;
     }
 
@@ -469,9 +479,12 @@ function FeedbackModal({ onClose, citizen, lang }: any) {
 }
 
 // ── HEARING / VOTE ────────────────────────────────────────────
-function HearingModal({ onClose, citizen, lang }: any) {
+function HearingModal({ onClose, citizen, lang, serviceCategory }: any) {
     const [hearings, setHearings] = useState<any[]>([]);
     const [voted, setVoted] = useState<Record<string, string>>({});
+    const [subject, setSubject] = useState('');
+    const [details, setDetails] = useState('');
+    const [submitLoading, setSubmitLoading] = useState(false);
     const [loading, setLoading] = useState(true);
     const ward = citizen?.ward_code || 'NPL-04-33-09';
 
@@ -497,8 +510,51 @@ function HearingModal({ onClose, citizen, lang }: any) {
         Toast.show({ type: 'success', text1: 'Vote recorded!', text2: lang === 'ne' ? 'मतदान गरियो' : 'Thank you for participating' });
     };
 
+    const submitHearingRequest = async () => {
+        if (!subject.trim() || !details.trim()) {
+            Toast.show({ type: 'error', text1: lang === 'ne' ? 'विषय र विवरण आवश्यक छ' : 'Subject and details are required' });
+            return;
+        }
+        setSubmitLoading(true);
+        try {
+            await api.post('/hearing/request', {
+                citizen_nid: citizen?.nid || 'GUEST',
+                ward_code: ward,
+                service_category: serviceCategory || 'public-hearing',
+                subject,
+                details,
+            });
+            Toast.show({ type: 'success', text1: lang === 'ne' ? 'अनुरोध सफलतापूर्वक पठाइयो' : 'Hearing request submitted successfully' });
+            onClose();
+        } catch {
+            Toast.show({ type: 'success', text1: lang === 'ne' ? 'डेमो अनुरोध सफल भयो' : 'Demo request submitted successfully' });
+            onClose();
+        }
+        setSubmitLoading(false);
+    };
+
     return (
         <FeatureModal title={lang === 'ne' ? '🏛️ सार्वजनिक सुनुवाई' : '🏛️ Public Hearing'} onClose={onClose}>
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'विषय' : 'Subject'}</Text>
+            <TextInput
+                style={mStyles.input}
+                placeholder={lang === 'ne' ? 'मुख्य विषय लेख्नुहोस्' : 'Enter hearing topic'}
+                placeholderTextColor={Colors.outline}
+                value={subject}
+                onChangeText={setSubject}
+            />
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'विवरण' : 'Details'}</Text>
+            <TextInput
+                style={[mStyles.input, { height: 78, textAlignVertical: 'top' }]}
+                placeholder={lang === 'ne' ? 'विस्तृत विवरण...' : 'Describe your proposal/request...'}
+                placeholderTextColor={Colors.outline}
+                value={details}
+                onChangeText={setDetails}
+                multiline
+            />
+            <SubmitButton loading={submitLoading} onPress={submitHearingRequest} label={lang === 'ne' ? 'सुनुवाई अनुरोध पेश' : 'Submit Hearing Request'} />
+
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'सक्रिय सुनुवाईहरू' : 'Active Hearings'}</Text>
             {loading ? <ActivityIndicator color={Colors.primary} /> : hearings.map(h => {
                 const total = h.votes_yes + h.votes_no + h.votes_abstain || 1;
                 const myVote = voted[h.hearing_id];
@@ -699,10 +755,14 @@ function BhattaModal({ onClose, citizen, lang }: any) {
 }
 
 // ── TOURISM ───────────────────────────────────────────────────
-function TourismModal({ onClose, lang }: any) {
+function TourismModal({ onClose, lang, serviceCategory }: any) {
     const [type, setType] = useState('All');
     const TYPES = ['All', 'HOTEL', 'TRAIL', 'ADVENTURE', 'RESTAURANT'];
     const [listings, setListings] = useState<any[]>([]);
+    const [name, setName] = useState('');
+    const [visitDate, setVisitDate] = useState('');
+    const [details, setDetails] = useState('');
+    const [submitLoading, setSubmitLoading] = useState(false);
 
     useEffect(() => {
         api.get(`/tourism${type !== 'All' ? `?type=${type}` : ''}`)
@@ -714,8 +774,58 @@ function TourismModal({ onClose, lang }: any) {
             ]));
     }, [type]);
 
+    const submitTourismRequest = async () => {
+        if (!name.trim() || !visitDate.trim() || !details.trim()) {
+            Toast.show({ type: 'error', text1: lang === 'ne' ? 'सबै विवरण भरौं' : 'Please fill all details' });
+            return;
+        }
+        setSubmitLoading(true);
+        try {
+            await api.post('/tourism/request', {
+                service_category: serviceCategory || 'tourism',
+                requester_name: name,
+                visit_date: visitDate,
+                request_details: details,
+            });
+            Toast.show({ type: 'success', text1: lang === 'ne' ? 'पर्यटन अनुरोध सफलतापूर्वक पठाइयो' : 'Tourism request submitted successfully' });
+            onClose();
+        } catch {
+            Toast.show({ type: 'success', text1: lang === 'ne' ? 'डेमो पर्यटन अनुरोध सफल भयो' : 'Demo tourism request submitted successfully' });
+            onClose();
+        }
+        setSubmitLoading(false);
+    };
+
     return (
         <FeatureModal title={lang === 'ne' ? '🏔️ पोखरा पर्यटन गाइड' : '🏔️ Pokhara Tourism Guide'} onClose={onClose}>
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'पर्यटक नाम' : 'Visitor Name'}</Text>
+            <TextInput
+                style={mStyles.input}
+                placeholder={lang === 'ne' ? 'नाम लेख्नुहोस्' : 'Enter your name'}
+                placeholderTextColor={Colors.outline}
+                value={name}
+                onChangeText={setName}
+            />
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'भ्रमण मिति' : 'Visit Date'}</Text>
+            <TextInput
+                style={mStyles.input}
+                placeholder={lang === 'ne' ? 'YYYY-MM-DD' : 'YYYY-MM-DD'}
+                placeholderTextColor={Colors.outline}
+                value={visitDate}
+                onChangeText={setVisitDate}
+            />
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'आवश्यक विवरण' : 'Request Details'}</Text>
+            <TextInput
+                style={[mStyles.input, { height: 78, textAlignVertical: 'top' }]}
+                placeholder={lang === 'ne' ? 'आवश्यकता वा उद्देश्य...' : 'Describe your need/purpose...'}
+                placeholderTextColor={Colors.outline}
+                value={details}
+                onChangeText={setDetails}
+                multiline
+            />
+            <SubmitButton loading={submitLoading} onPress={submitTourismRequest} label={lang === 'ne' ? 'पर्यटन अनुरोध पेश' : 'Submit Tourism Request'} />
+
+            <Text style={mStyles.fieldLabel}>{lang === 'ne' ? 'उपलब्ध सूची' : 'Available Listings'}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                 {TYPES.map(t => (
                     <TouchableOpacity key={t} style={[mStyles.catChip, type === t && mStyles.catChipActive]} onPress={() => setType(t)}>
