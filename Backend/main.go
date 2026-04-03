@@ -46,7 +46,7 @@ func main() {
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: cfg.CORSOrigins,
 		AllowMethods: "GET,POST,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Authorization",
 	}))
@@ -66,6 +66,8 @@ func main() {
 	app.Post("/ai/assistant", handlers.GovernmentAssistant(db))
 	app.Get("/ai/suggestions", handlers.AssistantSuggestions())
 	app.Post("/ai/translate", handlers.TranslateText(db))
+	app.Post("/ai/transcribe/nepali", handlers.TranscribeNepaliAudio())
+	app.Get("/ai/transcribe/nepali/stream", handlers.TranscribeNepaliAudioStream())
 
 	// ── Citizen Routes ─────────────────────────────────────
 	citizen := app.Group("/citizen")
@@ -96,6 +98,7 @@ func main() {
 
 	officer := app.Group("/officer", middleware.RequireOfficer(cfg.JWTSecret))
 	officer.Get("/queue", handlers.GetQueue(db))
+	officer.Get("/verify/:dtid", handlers.OfficerVerifyDocument(db))
 	officer.Get("/request-pdf/:request_id", handlers.OfficerRequestPreviewPDF(db))
 	officer.Post("/approve", handlers.ApproveRequest(db, broker))
 	officer.Post("/reject", handlers.RejectRequest(db))

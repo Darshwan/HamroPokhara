@@ -129,7 +129,7 @@ export default function WardMapScreen({ navigation }: any) {
               key={ward.wardNo}
               style={styles.wardCard}
               activeOpacity={0.9}
-              onPress={() => navigation.navigate('WardDetail', { ward })}
+                onPress={() => navigation.navigate({ name: 'WardDetail', params: { ward } })}
             >
               <View style={styles.wardTop}>
                 <View style={styles.wardBadge}>

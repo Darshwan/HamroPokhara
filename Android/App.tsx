@@ -29,6 +29,9 @@ import AppHeader from './src/components/AppHeader';
 const Stack = createStackNavigator();
 const Tab   = createBottomTabNavigator();
 
+const TAB_ORDER = ['Home', 'Services', 'AiAssistant', 'Profile'] as const;
+type TabRouteName = (typeof TAB_ORDER)[number];
+
 type ServiceLink = {
   id: string;
   icon: string;
@@ -53,6 +56,16 @@ type DepartmentService = {
   portalUrl: string;
 };
 
+type SwipeableTabScreenProps = {
+  navigation: any;
+  route: { name: string };
+  children: React.ReactNode;
+};
+
+function SwipeableTabScreen({ navigation, route, children }: SwipeableTabScreenProps) {
+  return <View style={{ flex: 1 }}>{children}</View>;
+}
+
 const CORE_SERVICES: ServiceLink[] = [
   {
     id: 'request',
@@ -71,25 +84,6 @@ const CORE_SERVICES: ServiceLink[] = [
     subtitle: 'Check current request status',
     subtitleNE: 'हालको अनुरोधको स्थिति हेर्नुहोस्',
     route: 'Track',
-  },
-  {
-    id: 'verify',
-    icon: 'verified-user',
-    title: 'Verify Documents',
-    titleNE: 'कागजात प्रमाणीकरण',
-    subtitle: 'Validate submitted documents',
-    subtitleNE: 'पेश गरिएका कागजात प्रमाणीकरण गर्नुहोस्',
-    route: 'Verify',
-  },
-  {
-    id: 'assistant',
-    icon: 'smart-toy',
-    title: 'AI Assistance',
-    titleNE: 'AI सहायता',
-    subtitle: 'Get instant service help',
-    subtitleNE: 'तुरुन्त सेवा सहायता पाउनुहोस्',
-    route: 'Features',
-    params: { openFeature: 'ai' },
   },
 ];
 
@@ -204,7 +198,10 @@ function ServicesScreen({ navigation }: any) {
   const defaultPortalUrl = 'https://pokharamun.gov.np';
 
   const openService = (item: ServiceLink) => {
-    navigation.navigate(item.route, item.params || {});
+    navigation.navigate({
+      name: item.route,
+      params: item.params || {},
+    });
   };
 
   const departmentDetails: DepartmentService[] = [
@@ -520,7 +517,6 @@ function MainTabs() {
     >
       <Tab.Screen
         name="Home"
-        component={HomeScreen}
         options={{
           tabBarLabel: isNepali ? 'गृह' : 'Home',
           tabBarIcon: ({ color, focused }) => (
@@ -530,37 +526,58 @@ function MainTabs() {
             />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabScreen navigation={props.navigation} route={props.route}>
+            <HomeScreen {...props} />
+          </SwipeableTabScreen>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="Services"
-        component={ServicesScreen}
         options={{
           tabBarLabel: isNepali ? 'सेवा' : 'Services',
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="apps" size={22} color={color} />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabScreen navigation={props.navigation} route={props.route}>
+            <ServicesScreen {...props} />
+          </SwipeableTabScreen>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="AiAssistant"
-        component={GovernmentAssistantScreen}
         options={{
           tabBarLabel: isNepali ? 'एआई सहायक' : 'AI Assistant',
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name={focused ? 'smart-toy' : 'smart-toy'} size={22} color={color} />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabScreen navigation={props.navigation} route={props.route}>
+            <GovernmentAssistantScreen {...props} />
+          </SwipeableTabScreen>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="Profile"
-        component={ProfileScreen}
         options={{
           tabBarLabel: isNepali ? 'प्रोफाइल' : 'Profile',
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
           ),
         }}
-      />
+      >
+        {(props) => (
+          <SwipeableTabScreen navigation={props.navigation} route={props.route}>
+            <ProfileScreen {...props} />
+          </SwipeableTabScreen>
+        )}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }

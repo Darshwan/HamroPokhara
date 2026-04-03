@@ -12,6 +12,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow } from '../constants/theme';
 import { PDFDocumentData } from '../utils/pdfGenerator';
+import { formatNepaliCalendarDate } from '../utils/nepaliDate';
 
 export interface PDFPreviewModalProps {
   visible: boolean;
@@ -95,11 +96,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({
                   <PreviewField label="Document Type" value={docDescription} />
                   <PreviewField
                     label="Request Date"
-                    value={new Date().toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
+                    value={formatNepaliCalendarDate(new Date())}
                   />
                   {documentData.requestId && (
                     <PreviewField label="Request ID" value={documentData.requestId} isCode />

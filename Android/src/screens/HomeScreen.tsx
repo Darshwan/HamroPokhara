@@ -10,6 +10,7 @@ import { Colors, Radius, Shadow, Typography } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { citizenAPI, statsAPI, weatherAPI } from '../api/client';
 import AppHeader from '../components/AppHeader';
+import { formatNepaliCalendarDate, formatNepaliCalendarShortDate } from '../utils/nepaliDate';
 
 type WeatherCardData = {
   temperature: number;
@@ -284,7 +285,8 @@ export default function HomeScreen({ navigation }: any) {
   const [failedWeatherImages, setFailedWeatherImages] = useState<Record<string, boolean>>({});
   const weatherBgOpacity = useRef(new Animated.Value(0.45)).current;
   const isNepali = language === 'ne';
-  const today = new Date().toLocaleDateString(isNepali ? 'ne-NP' : 'en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const todayBS = formatNepaliCalendarDate(new Date(), { includeWeekday: true });
+  const today = isNepali ? `${todayBS} (वि.सं.)` : `${todayBS} (BS)`;
 
   const t = (en: string, ne: string) => (isNepali ? ne : en);
 
@@ -452,7 +454,7 @@ export default function HomeScreen({ navigation }: any) {
     return notices.slice(0, 5).map((notice, index) => ({
       title: isNepali ? (notice.title_ne || notice.title || 'सूचना') : (notice.title || notice.title_ne || 'Notice'),
       wardLabel: getNoticeWardLabel(notice),
-      time: notice.published_at ? new Date(notice.published_at).toLocaleString(isNepali ? 'ne-NP' : [], { month: 'short', day: 'numeric' }) : index === 0 ? t('JUST NOW', 'अहिले') : t(`${index + 1} HRS AGO`, `${index + 1} घण्टा अघि`),
+      time: notice.published_at ? formatNepaliCalendarShortDate(notice.published_at) : index === 0 ? t('JUST NOW', 'अहिले') : t(`${index + 1} HRS AGO`, `${index + 1} घण्टा अघि`),
       image: NOTICE_STORY_IMAGES[index % NOTICE_STORY_IMAGES.length],
       summary: notice.content || t('Open the notice board for more detail.', 'थप विवरणका लागि सूचना बोर्ड खोल्नुहोस्।'),
     }));
@@ -631,19 +633,6 @@ export default function HomeScreen({ navigation }: any) {
                   }
                 }}
               />
-              <TouchableOpacity
-                style={styles.micBtn}
-                onPress={() => {
-                  if (searchQuery.trim()) {
-                    setSearchQuery('');
-                    setDebouncedQuery('');
-                    Keyboard.dismiss();
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name={searchQuery.trim() ? 'close' : 'mic'} size={20} color="#fff" />
-              </TouchableOpacity>
             </View>
 
             {showSearchPanel && (
@@ -1163,11 +1152,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4, marginBottom: 18, ...Shadow.sm,
   },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface, paddingVertical: 12 },
-  micBtn: {
-    width: 40, height: 40, borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
   searchResultsCard: {
     backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: Radius.xl,

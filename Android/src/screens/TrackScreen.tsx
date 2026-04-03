@@ -17,6 +17,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; l
   UNDER_REVIEW: { color: '#1d4ed8', bg: '#eff6ff', icon: 'rate-review',   label: 'Under Review'   },
   APPROVED:     { color: '#2d7a52', bg: '#d9f2e3', icon: 'check-circle',  label: 'Ready!'         },
   REJECTED:     { color: '#c0392b', bg: '#fdf0ef', icon: 'cancel',        label: 'Rejected'       },
+  NOT_FOUND:    { color: '#6b7280', bg: '#f3f4f6', icon: 'help-outline',  label: 'Not Found'      },
 };
 
 export default function TrackScreen() {
@@ -35,6 +36,11 @@ export default function TrackScreen() {
               status:  res.status,
               dtid:    res.dtid,
               qr_data: res.qr_data,
+            });
+          } else if (res.status === 404) {
+            // Legacy/local request IDs from older app versions should not be polled forever.
+            await updateRequest(req.request_id, {
+              status: 'NOT_FOUND',
             });
           }
         } catch (e) { /* offline — keep local status */ }
@@ -150,6 +156,16 @@ export default function TrackScreen() {
                   <Text style={styles.rejectedTitle}>Rejection Reason:</Text>
                   <Text style={styles.rejectedReason}>
                     Please check your documents and resubmit.
+                  </Text>
+                </View>
+              )}
+
+              {/* NOT_FOUND — usually stale local request IDs from old app versions */}
+              {req.status === 'NOT_FOUND' && (
+                <View style={styles.rejectedBox}>
+                  <Text style={styles.rejectedTitle}>Request Not Found:</Text>
+                  <Text style={styles.rejectedReason}>
+                    This request ID is not available on the server. It may be a legacy local record.
                   </Text>
                 </View>
               )}

@@ -3,15 +3,20 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 
 	"pratibimba/internal/database"
 	"pratibimba/internal/models"
@@ -241,6 +246,423 @@ func TranslateText(db *database.DB) fiber.Handler {
 			"original_len":   len(text),
 			"translated_len": len(translated),
 		})
+	}
+}
+
+type transcriptionStreamClientMessage struct {
+	Type        string `json:"type"`
+	SessionID   string `json:"session_id,omitempty"`
+	ChunkIndex  int    `json:"chunk_index,omitempty"`
+	AudioBase64 string `json:"audio_base64,omitempty"`
+	MimeType    string `json:"mime_type,omitempty"`
+	Final       bool   `json:"final,omitempty"`
+}
+
+type transcriptionStreamServerMessage struct {
+	Type                 string `json:"type"`
+	SessionID            string `json:"session_id,omitempty"`
+	ChunkIndex           int    `json:"chunk_index,omitempty"`
+	Transcript           string `json:"transcript,omitempty"`
+	CumulativeTranscript string `json:"cumulative_transcript,omitempty"`
+	Complete             bool   `json:"complete,omitempty"`
+	Source               string `json:"source,omitempty"`
+	Error                string `json:"error,omitempty"`
+}
+
+// TranscribeNepaliAudio handles POST /ai/transcribe/nepali.
+// It accepts either a single uploaded chunk or a buffered list of base64 chunks.
+// When final=true, it returns final_transcript assembled from all buffered chunks.
+func TranscribeNepaliAudio() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		traceID := fmt.Sprintf("stt-%d", time.Now().UnixNano())
+		finalFlag := parseFormBool(c.FormValue("final"))
+		log.Printf("[STT][%s] request start ip=%s final=%v content_type=%s session_id=%s chunk_index=%s", traceID, c.IP(), finalFlag, c.Get("Content-Type"), c.FormValue("session_id"), c.FormValue("chunk_index"))
+
+		result, err := transcribeNepaliAudioFromRequest(c, traceID)
+		if err != nil {
+			log.Printf("[STT][%s] request failed: %v", traceID, err)
+			if isTranscriptionUnavailable(err) {
+				log.Printf("[STT][%s] returning offline response final=%v", traceID, finalFlag)
+				return c.Status(200).JSON(transcriptionUnavailableResponse(err.Error(), finalFlag))
+			}
+
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+
+		log.Printf("[STT][%s] request complete final=%v transcript_len=%d final_transcript_len=%d chunks=%d", traceID, result.Final, len(result.Transcript), len(result.FinalTranscript), len(result.ChunkTranscripts))
+
+		response := fiber.Map{
+			"success":           true,
+			"transcript":        result.Transcript,
+			"final_transcript":  result.FinalTranscript,
+			"chunk_transcripts": result.ChunkTranscripts,
+			"final":             result.Final,
+			"source":            "openai-whisper",
+		}
+
+		return c.JSON(response)
+	}
+}
+
+// TranscribeNepaliAudioStream handles websocket streaming for dictation.
+// The client sends short audio chunks and receives interim transcript updates.
+func TranscribeNepaliAudioStream() fiber.Handler {
+	return websocket.New(func(c *websocket.Conn) {
+		sessionID := fmt.Sprintf("stt-%d", time.Now().UnixNano())
+		cumulative := ""
+		log.Printf("[STT-WS][%s] websocket connected", sessionID)
+
+		_ = c.WriteJSON(transcriptionStreamServerMessage{
+			Type:      "ready",
+			SessionID: sessionID,
+			Source:    "openai-whisper",
+		})
+
+		for {
+			messageType, payload, err := c.ReadMessage()
+			if err != nil {
+				log.Printf("[STT-WS][%s] websocket read closed: %v", sessionID, err)
+				return
+			}
+
+			if messageType != websocket.TextMessage {
+				continue
+			}
+
+			var incoming transcriptionStreamClientMessage
+			if err := json.Unmarshal(payload, &incoming); err != nil {
+				log.Printf("[STT-WS][%s] invalid message payload: %v", sessionID, err)
+				_ = c.WriteJSON(transcriptionStreamServerMessage{
+					Type:  "error",
+					Error: "invalid transcription message",
+				})
+				continue
+			}
+
+			log.Printf("[STT-WS][%s] message received type=%s chunk_index=%d final=%v audio_base64_len=%d mime_type=%s", sessionID, incoming.Type, incoming.ChunkIndex, incoming.Final, len(incoming.AudioBase64), incoming.MimeType)
+
+			switch strings.ToLower(strings.TrimSpace(incoming.Type)) {
+			case "start":
+				if incoming.SessionID != "" {
+					sessionID = incoming.SessionID
+				}
+				log.Printf("[STT-WS][%s] session started", sessionID)
+				_ = c.WriteJSON(transcriptionStreamServerMessage{
+					Type:      "started",
+					SessionID: sessionID,
+					Source:    "openai-whisper",
+				})
+			case "chunk":
+				chunkBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(incoming.AudioBase64))
+				if err != nil {
+					log.Printf("[STT-WS][%s] chunk decode failed chunk_index=%d: %v", sessionID, incoming.ChunkIndex, err)
+					_ = c.WriteJSON(transcriptionStreamServerMessage{
+						Type:  "error",
+						Error: "invalid audio chunk",
+					})
+					continue
+				}
+				log.Printf("[STT-WS][%s] chunk decoded chunk_index=%d bytes=%d", sessionID, incoming.ChunkIndex, len(chunkBytes))
+
+				transcript, err := transcribeNepaliAudioBytes(chunkBytes, incoming.MimeType)
+				if err != nil {
+					log.Printf("[STT-WS][%s] chunk transcription failed chunk_index=%d: %v", sessionID, incoming.ChunkIndex, err)
+					_ = c.WriteJSON(transcriptionStreamServerMessage{
+						Type:  "error",
+						Error: err.Error(),
+					})
+					continue
+				}
+
+				transcript = strings.TrimSpace(transcript)
+				log.Printf("[STT-WS][%s] chunk transcription complete chunk_index=%d transcript_len=%d", sessionID, incoming.ChunkIndex, len(transcript))
+				if transcript != "" {
+					if cumulative != "" {
+						cumulative += " "
+					}
+					cumulative += transcript
+				}
+				log.Printf("[STT-WS][%s] cumulative transcript len=%d", sessionID, len(cumulative))
+
+				_ = c.WriteJSON(transcriptionStreamServerMessage{
+					Type:                 "interim",
+					SessionID:            sessionID,
+					ChunkIndex:           incoming.ChunkIndex,
+					Transcript:           transcript,
+					CumulativeTranscript: cumulative,
+					Complete:             false,
+					Source:               "openai-whisper",
+				})
+			case "stop":
+				log.Printf("[STT-WS][%s] stop received final_transcript_len=%d", sessionID, len(cumulative))
+				_ = c.WriteJSON(transcriptionStreamServerMessage{
+					Type:                 "final",
+					SessionID:            sessionID,
+					Transcript:           cumulative,
+					CumulativeTranscript: cumulative,
+					Complete:             true,
+					Source:               "openai-whisper",
+				})
+				return
+			}
+
+			if incoming.Final {
+				log.Printf("[STT-WS][%s] final flag received final_transcript_len=%d", sessionID, len(cumulative))
+				_ = c.WriteJSON(transcriptionStreamServerMessage{
+					Type:                 "final",
+					SessionID:            sessionID,
+					Transcript:           cumulative,
+					CumulativeTranscript: cumulative,
+					Complete:             true,
+					Source:               "openai-whisper",
+				})
+				return
+			}
+		}
+	})
+}
+
+type transcriptionResult struct {
+	Transcript       string
+	FinalTranscript  string
+	ChunkTranscripts []string
+	Final            bool
+}
+
+var errTranscriptionUnavailable = errors.New("transcription unavailable")
+
+func transcribeNepaliAudioFromRequest(c *fiber.Ctx, traceID string) (*transcriptionResult, error) {
+	finalFlag := parseFormBool(c.FormValue("final"))
+	log.Printf("[STT][%s] parsing request final=%v session_id=%s chunk_index=%s buffered_audio_present=%v audio_base64_present=%v", traceID, finalFlag, c.FormValue("session_id"), c.FormValue("chunk_index"), strings.TrimSpace(c.FormValue("buffered_audio_base64")) != "", strings.TrimSpace(c.FormValue("audio_base64")) != "")
+	bufferedChunks, err := parseBufferedAudioBase64(c.FormValue("buffered_audio_base64"))
+	if err != nil {
+		log.Printf("[STT][%s] buffered chunk parse failed: %v", traceID, err)
+		return nil, err
+	}
+	log.Printf("[STT][%s] buffered chunk count=%d", traceID, len(bufferedChunks))
+
+	if len(bufferedChunks) > 0 {
+		result, err := transcribeNepaliBufferedChunks(bufferedChunks, finalFlag, traceID)
+		if err != nil {
+			log.Printf("[STT][%s] buffered transcription failed: %v", traceID, err)
+			return nil, err
+		}
+		log.Printf("[STT][%s] buffered transcription complete transcript_len=%d final_transcript_len=%d", traceID, len(result.Transcript), len(result.FinalTranscript))
+		return result, nil
+	}
+
+	if audioBase64 := strings.TrimSpace(c.FormValue("audio_base64")); audioBase64 != "" {
+		log.Printf("[STT][%s] base64 audio payload detected len=%d", traceID, len(audioBase64))
+		transcript, err := transcribeNepaliAudioBytesFromBase64(audioBase64, c.FormValue("mime_type"))
+		if err != nil {
+			log.Printf("[STT][%s] base64 transcription failed: %v", traceID, err)
+			return nil, err
+		}
+		log.Printf("[STT][%s] base64 transcription complete transcript_len=%d", traceID, len(transcript))
+		return &transcriptionResult{
+			Transcript:       transcript,
+			FinalTranscript:  transcript,
+			ChunkTranscripts: []string{transcript},
+			Final:            finalFlag,
+		}, nil
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		log.Printf("[STT][%s] no audio source found", traceID)
+		return nil, fmt.Errorf("audio file or buffered_audio_base64 is required")
+	}
+	log.Printf("[STT][%s] uploaded file detected filename=%s size=%d content_type=%s", traceID, fileHeader.Filename, fileHeader.Size, fileHeader.Header.Get("Content-Type"))
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		log.Printf("[STT][%s] unable to open uploaded audio: %v", traceID, err)
+		return nil, fmt.Errorf("unable to open uploaded audio")
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		log.Printf("[STT][%s] unable to read uploaded audio: %v", traceID, err)
+		return nil, fmt.Errorf("unable to read uploaded audio")
+	}
+	log.Printf("[STT][%s] uploaded audio bytes read=%d", traceID, len(data))
+
+	transcript, err := transcribeNepaliAudioBytes(data, fileHeader.Header.Get("Content-Type"))
+	if err != nil {
+		log.Printf("[STT][%s] file transcription failed: %v", traceID, err)
+		return nil, err
+	}
+	log.Printf("[STT][%s] file transcription complete transcript_len=%d", traceID, len(transcript))
+
+	return &transcriptionResult{
+		Transcript:       transcript,
+		FinalTranscript:  transcript,
+		ChunkTranscripts: []string{transcript},
+		Final:            finalFlag,
+	}, nil
+}
+
+func transcribeNepaliBufferedChunks(chunks []string, finalFlag bool, traceID string) (*transcriptionResult, error) {
+	chunkTranscripts := make([]string, 0, len(chunks))
+	for index, encoded := range chunks {
+		encoded = strings.TrimSpace(encoded)
+		if encoded == "" {
+			log.Printf("[STT][%s] buffered chunk skipped index=%d reason=empty", traceID, index)
+			continue
+		}
+
+		log.Printf("[STT][%s] buffered chunk start index=%d encoded_len=%d", traceID, index, len(encoded))
+		transcript, err := transcribeNepaliAudioBytesFromBase64(encoded, "")
+		if err != nil {
+			log.Printf("[STT][%s] buffered chunk failed index=%d: %v", traceID, index, err)
+			return nil, err
+		}
+		log.Printf("[STT][%s] buffered chunk complete index=%d transcript_len=%d", traceID, index, len(strings.TrimSpace(transcript)))
+		if trimmed := strings.TrimSpace(transcript); trimmed != "" {
+			chunkTranscripts = append(chunkTranscripts, trimmed)
+		}
+	}
+
+	finalTranscript := strings.TrimSpace(strings.Join(chunkTranscripts, " "))
+	if !finalFlag {
+		if len(chunkTranscripts) > 0 {
+			finalTranscript = chunkTranscripts[len(chunkTranscripts)-1]
+		}
+	}
+	log.Printf("[STT][%s] buffered final assembly final=%v chunk_count=%d final_transcript_len=%d", traceID, finalFlag, len(chunkTranscripts), len(finalTranscript))
+
+	return &transcriptionResult{
+		Transcript:       finalTranscript,
+		FinalTranscript:  finalTranscript,
+		ChunkTranscripts: chunkTranscripts,
+		Final:            finalFlag,
+	}, nil
+}
+
+func transcribeNepaliAudioBytesFromBase64(audioBase64, mimeType string) (string, error) {
+	audioBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(audioBase64))
+	if err != nil {
+		return "", fmt.Errorf("invalid base64 audio payload")
+	}
+	return transcribeNepaliAudioBytes(audioBytes, mimeType)
+}
+
+func parseFormBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "final":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseBufferedAudioBase64(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	var chunks []string
+	if err := json.Unmarshal([]byte(raw), &chunks); err == nil {
+		return chunks, nil
+	}
+
+	if strings.HasPrefix(raw, "[") && strings.HasSuffix(raw, "]") {
+		return nil, fmt.Errorf("buffered_audio_base64 is invalid")
+	}
+
+	return []string{raw}, nil
+}
+
+func transcribeNepaliAudioBytes(audioBytes []byte, mimeType string) (string, error) {
+	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	if apiKey == "" {
+		log.Printf("[STT] transcription unavailable: OPENAI_API_KEY missing")
+		return "", fmt.Errorf("%w: OPENAI_API_KEY is not configured", errTranscriptionUnavailable)
+	}
+
+	model := strings.TrimSpace(os.Getenv("OPENAI_TRANSCRIBE_MODEL"))
+	if model == "" {
+		model = "whisper-1"
+	}
+
+	contentType := strings.TrimSpace(mimeType)
+	if contentType == "" {
+		contentType = "audio/m4a"
+	}
+	log.Printf("[STT] upstream transcription start audio_bytes=%d mime_type=%s model=%s", len(audioBytes), contentType, model)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", model); err != nil {
+		return "", err
+	}
+	if err := writer.WriteField("language", "ne"); err != nil {
+		return "", err
+	}
+	part, err := writer.CreateFormFile("file", "chunk.m4a")
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(audioBytes); err != nil {
+		return "", err
+	}
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/audio/transcriptions", &body)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("OpenAI-Organization", strings.TrimSpace(os.Getenv("OPENAI_ORG_ID")))
+	_ = contentType
+
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[STT] upstream transcription request failed: %v", err)
+		return "", fmt.Errorf("%w: transcription request failed: %w", errTranscriptionUnavailable, err)
+	}
+	defer resp.Body.Close()
+	log.Printf("[STT] upstream transcription response status=%s", resp.Status)
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[STT] upstream transcription non-2xx body_len=%d body=%s", len(bodyBytes), strings.TrimSpace(string(bodyBytes)))
+		return "", fmt.Errorf("%w: transcription failed: %s", errTranscriptionUnavailable, strings.TrimSpace(string(bodyBytes)))
+	}
+
+	var result struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[STT] upstream transcription decode failed: %v", err)
+		return "", fmt.Errorf("%w: unable to parse transcription response: %w", errTranscriptionUnavailable, err)
+	}
+	log.Printf("[STT] upstream transcription complete text_len=%d", len(strings.TrimSpace(result.Text)))
+
+	return strings.TrimSpace(result.Text), nil
+}
+
+func isTranscriptionUnavailable(err error) bool {
+	return errors.Is(err, errTranscriptionUnavailable)
+}
+
+func transcriptionUnavailableResponse(message string, finalFlag bool) fiber.Map {
+	return fiber.Map{
+		"success":           false,
+		"offline":           true,
+		"final":             finalFlag,
+		"transcript":        "",
+		"final_transcript":  "",
+		"chunk_transcripts": []string{},
+		"source":            "unavailable",
+		"message":           message,
 	}
 }
 

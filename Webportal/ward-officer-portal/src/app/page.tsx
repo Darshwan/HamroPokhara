@@ -220,11 +220,11 @@ export default function Home() {
     setStats(statsResult);
     setQueue(queueResult);
     setNotices(noticesResult);
-    if (selectedRequest) {
-      const found = queueResult.find((item) => item.request_id === selectedRequest.request_id) || null;
-      setSelectedRequest(found);
-    }
-  }, [selectedRequest]);
+    setSelectedRequest((current) => {
+      if (!current) return current;
+      return queueResult.find((item) => item.request_id === current.request_id) || null;
+    });
+  }, []);
 
   useEffect(() => {
     if (!token || !officer) return;

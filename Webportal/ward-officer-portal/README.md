@@ -36,7 +36,10 @@ Create a file named `.env.local` and copy values from `.env.example`.
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 NEXT_PUBLIC_HLS_STREAM_URL=http://192.168.100.55/hls/stream.m3u8
+HLS_PROXY_TARGET=http://192.168.100.55
 ```
+
+The app rewrites `/hls/*` to `HLS_PROXY_TARGET/hls/*` so playlist and segment requests stay same-origin in the browser.
 
 1. Start the app:
 

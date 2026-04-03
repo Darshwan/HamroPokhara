@@ -7,6 +7,24 @@ type LiveHlsPlayerProps = {
   src: string;
 };
 
+function resolvePlayableSrc(inputSrc: string): string {
+  if (!inputSrc || typeof window === "undefined") {
+    return inputSrc;
+  }
+
+  const parsed = new URL(inputSrc, window.location.href);
+  if (parsed.origin === window.location.origin) {
+    return parsed.toString();
+  }
+
+  // Route cross-origin HLS paths through the app rewrite proxy.
+  if (parsed.pathname.startsWith("/hls/")) {
+    return `${window.location.origin}${parsed.pathname}${parsed.search}`;
+  }
+
+  return parsed.toString();
+}
+
 export default function LiveHlsPlayer({ src }: LiveHlsPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canPlayNativeHls =
@@ -32,7 +50,7 @@ export default function LiveHlsPlayer({ src }: LiveHlsPlayerProps) {
         }
       });
 
-      const streamUrl = new URL(src, window.location.href);
+      const streamUrl = new URL(resolvePlayableSrc(src), window.location.href);
       streamUrl.searchParams.set("_", Date.now().toString());
 
       hls.loadSource(streamUrl.toString());
@@ -44,7 +62,7 @@ export default function LiveHlsPlayer({ src }: LiveHlsPlayerProps) {
     }
 
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      const streamUrl = new URL(src, window.location.href);
+      const streamUrl = new URL(resolvePlayableSrc(src), window.location.href);
       streamUrl.searchParams.set("_", Date.now().toString());
       video.src = streamUrl.toString();
       return;

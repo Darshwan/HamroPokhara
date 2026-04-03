@@ -11,6 +11,7 @@ type Config struct {
 	DatabaseURL string
 	Port        string
 	JWTSecret   string
+	CORSOrigins string
 	Env         string
 	AppName     string
 	AppVersion  string
@@ -27,6 +28,7 @@ func Load() *Config {
 		DatabaseURL: mustGet("DATABASE_URL"),
 		Port:        getOrDefault("PORT", "8080"),
 		JWTSecret:   mustGet("JWT_SECRET"),
+		CORSOrigins: getOrDefault("CORS_ALLOW_ORIGINS", "*"),
 		Env:         getOrDefault("ENV", "development"),
 		AppName:     getOrDefault("APP_NAME", "PRATIBIMBA"),
 		AppVersion:  getOrDefault("APP_VERSION", "1.0.0"),
